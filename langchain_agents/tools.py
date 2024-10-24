@@ -10,8 +10,8 @@ class ProfileOptimizationInput(BaseModel):
     profile_type: str = Field(..., description="Type of profile (linkedin/github)")
 
 class WebsiteGeneratorTool(BaseTool):
-    name = "website_generator"
-    description = "Generate professional website content based on user information"
+    name: str = "website_generator"
+    description: str = "Generate professional website content based on user information"
     args_schema: Type[BaseModel] = WebsiteContentInput
     
     def _run(self, user_data: dict) -> str:
@@ -25,8 +25,8 @@ class WebsiteGeneratorTool(BaseTool):
         return f"Generated website content for user: {user_data}"
 
 class ProfileOptimizerTool(BaseTool):
-    name = "profile_optimizer"
-    description = "Optimize professional profiles (LinkedIn/GitHub)"
+    name: str = "profile_optimizer"
+    description: str = "Optimize professional profiles (LinkedIn/GitHub)"
     args_schema: Type[BaseModel] = ProfileOptimizationInput
     
     def _run(self, profile_data: dict, profile_type: str) -> str:

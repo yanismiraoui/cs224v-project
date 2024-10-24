@@ -2,8 +2,8 @@ from langchain.agents import AgentExecutor, OpenAIFunctionsAgent
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import SystemMessage
-from .custom_together_llm import TogetherLLM
-from .tools import WebsiteGeneratorTool, ProfileOptimizerTool
+from custom_together_llm import TogetherLLM
+from tools import WebsiteGeneratorTool, ProfileOptimizerTool
 
 class JobApplicationAgent:
     def __init__(self, api_key: str):
