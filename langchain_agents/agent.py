@@ -75,7 +75,7 @@ class JobApplicationAgent:
             memory=self.memory,
             verbose=True,
             handle_parsing_errors=True,
-            max_iterations=3,
+            max_iterations=5,
         )
     
     async def process(self, user_input: str) -> str:

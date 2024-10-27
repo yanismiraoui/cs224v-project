@@ -4,17 +4,27 @@ from agent import JobApplicationAgent
 import toml
 import os
 
-secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.streamlit', 'secrets.toml')
-secrets = toml.load(secrets_path)
-os.environ['TOGETHER_API_KEY'] = secrets['TOGETHER_API_KEY']
+# Initialize environment variables and configurations
+try:
+    secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.streamlit', 'secrets.toml')
+    secrets = toml.load(secrets_path)
+    os.environ['TOGETHER_API_KEY'] = secrets['TOGETHER_API_KEY']
+except Exception as e:
+    st.error(f"Error loading secrets: {str(e)}")
+    st.stop()
 
 class StreamlitUI:
     def __init__(self):
         # Initialize session state
         if 'agent' not in st.session_state:
-            st.session_state.agent = JobApplicationAgent()
+            st.session_state.agent = asyncio.run(self.initialize_agent())
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
+            
+    @staticmethod
+    async def initialize_agent() -> JobApplicationAgent:
+        """Initialize the agent asynchronously."""
+        return JobApplicationAgent()
             
     def render_chat_message(self, role: str, content: str):
         """Render a chat message with the appropriate styling."""
@@ -26,48 +36,78 @@ class StreamlitUI:
         for message in st.session_state.chat_history:
             self.render_chat_message(message["role"], message["content"])
             
-    async def process_input(self, user_input: str):
+    async def process_input(self, user_input: str) -> str:
         """Process user input and get agent response."""
-        response = await st.session_state.agent.process(user_input)
-        print("Raw agent response:", response)
-        return response.get('output', response) if isinstance(response, dict) else response
+        try:
+            response = await st.session_state.agent.process(user_input)
+            if isinstance(response, dict):
+                return response.get('output', str(response))
+            return str(response)
+        except Exception as e:
+            error_message = f"Error processing your request: {str(e)}"
+            st.error(error_message)
+            return error_message
     
     def run(self):
         """Run the Streamlit application."""
-        st.title("Job Application Assistant")
+        st.set_page_config(
+            page_title="Job Application Assistant",
+            page_icon="💼",
+            layout="wide"
+        )
         
-        # Sidebar for configuration
-        with st.sidebar:
-            st.header("Configuration")
-            if st.button("Clear Chat History"):
-                st.session_state.chat_history = []
-            
-            st.markdown("""
-            ### Available Tools
-            1. Website Generator - Create professional website content
-            2. Profile Optimizer - Optimize LinkedIn/GitHub profiles
-            
-            ### Example Prompts
-            - "Help me create a personal website with my experience..."
-            - "Can you optimize my LinkedIn profile?"
-            - "I need help improving my GitHub profile..."
-            """)
+        # Main layout
+        st.title("💼 Job Application Assistant")
         
-        # Main chat interface
-        st.header("Chat Interface")
-        self.display_chat_history()
+        # Two-column layout
+        col1, col2 = st.columns([2, 1])
         
-        # User input
-        if user_input := st.chat_input("Type your message here..."):
-            self.render_chat_message("user", user_input)
-            st.session_state.chat_history.append({"role": "user", "content": user_input})
-            
-            with st.spinner("Thinking..."):
-                # Process the input asynchronously
-                response = asyncio.run(self.process_input(user_input))
+        with col2:
+            st.header("Tools & Examples")
+            with st.expander("Available Tools", expanded=True):
+                st.markdown("""
+                1. **Website Generator** 📝
+                   - Creates professional website content
+                   - Optimizes for personal branding
                 
-            self.render_chat_message("assistant", response)
-            st.session_state.chat_history.append({"role": "assistant", "content": response})
+                2. **Profile Optimizer** 🔍
+                   - LinkedIn profile optimization
+                   - GitHub profile enhancement
+                """)
+            
+            with st.expander("Example Prompts", expanded=True):
+                st.markdown("""
+                Try these prompts:
+                - "Create a personal website showcasing my experience as a software engineer with 5 years of experience in Python and JavaScript"
+                - "Optimize my LinkedIn profile: [URL]"
+                - "Help improve my GitHub profile at [username]"
+                """)
+            
+            if st.button("Clear Chat History", type="secondary"):
+                st.session_state.chat_history = []
+                st.rerun()
+        
+        with col1:
+            # Chat interface
+            st.header("Chat Interface")
+            self.display_chat_history()
+            
+            # User input
+            if user_input := st.chat_input("Type your message here...", key="user_input"):
+                # Add user message to chat
+                self.render_chat_message("user", user_input)
+                st.session_state.chat_history.append({"role": "user", "content": user_input})
+                
+                # Process input with loading indicator
+                with st.spinner("Processing your request..."):
+                    response = asyncio.run(self.process_input(user_input))
+                
+                # Add assistant response to chat
+                self.render_chat_message("assistant", response)
+                st.session_state.chat_history.append({"role": "assistant", "content": response})
+                
+                # Rerun to update the UI
+                st.rerun()
 
 if __name__ == "__main__":
     app = StreamlitUI()
