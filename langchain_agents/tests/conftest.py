@@ -12,3 +12,5 @@ def pytest_configure(config):
         "markers",
         "asyncio: mark test as async"
     )
+
+pytest_plugins = ('pytest_asyncio',)

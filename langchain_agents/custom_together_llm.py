@@ -6,13 +6,11 @@ import together
 class TogetherLLM(LLM):
     """Custom LangChain LLM wrapper for Together AI."""
     
-    model_name: str = "togethercomputer/llama-2-70b-chat"
-    temperature: float = 0.7
-    max_tokens: int = 1024
+    model_name: str = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" #"meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo" #"meta-llama/Llama-3.2-3B-Instruct-Turbo" #"meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+    temperature: float = 0.1
     
-    def __init__(self, api_key: str, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        together.api_key = api_key
     
     @property
     def _llm_type(self) -> str:
@@ -22,15 +20,26 @@ class TogetherLLM(LLM):
         self,
         prompt: str,
         stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> str:
         """Execute the LLM call."""
+        # Format the prompt for chat
+        formatted_prompt = f"<human>: {prompt}\n<assistant>:"
+
         response = together.Complete.create(
-            prompt=prompt,
+            prompt=formatted_prompt,
             model=self.model_name,
             temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            stop=stop
+            stop=stop or ["<human>", "</human>", "<assistant>", "</assistant>"]
         )
-        return response['output']['choices'][0]['text']
+        output = response['choices'][0]['text'].strip()
+        print("Output from TogetherLLM:", output)
+        return output
+
+    @property
+    def _identifying_params(self) -> Mapping[str, Any]:
+        """Get the identifying parameters."""
+        return {
+            "model_name": self.model_name,
+            "temperature": self.temperature,
+        }

@@ -1,15 +1,18 @@
 import streamlit as st
 import asyncio
-import json
 from agent import JobApplicationAgent
-from typing import Dict
+import toml
+import os
+
+secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.streamlit', 'secrets.toml')
+secrets = toml.load(secrets_path)
+os.environ['TOGETHER_API_KEY'] = secrets['TOGETHER_API_KEY']
 
 class StreamlitUI:
     def __init__(self):
         # Initialize session state
         if 'agent' not in st.session_state:
-            api_key = st.secrets.get("TOGETHER_API_KEY", None)
-            st.session_state.agent = JobApplicationAgent(api_key=api_key)
+            st.session_state.agent = JobApplicationAgent()
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
             
@@ -26,7 +29,8 @@ class StreamlitUI:
     async def process_input(self, user_input: str):
         """Process user input and get agent response."""
         response = await st.session_state.agent.process(user_input)
-        return response
+        print("Raw agent response:", response)
+        return response.get('output', response) if isinstance(response, dict) else response
     
     def run(self):
         """Run the Streamlit application."""
@@ -38,48 +42,16 @@ class StreamlitUI:
             if st.button("Clear Chat History"):
                 st.session_state.chat_history = []
             
-            st.header("Tools")
-            tool_option = st.selectbox(
-                "Select Tool",
-                ["Website Generator", "LinkedIn Optimizer", "GitHub Optimizer"]
-            )
+            st.markdown("""
+            ### Available Tools
+            1. Website Generator - Create professional website content
+            2. Profile Optimizer - Optimize LinkedIn/GitHub profiles
             
-            # Tool-specific inputs
-            if tool_option == "Website Generator":
-                st.subheader("Website Information")
-                name = st.text_input("Name")
-                title = st.text_input("Professional Title")
-                experience = st.text_area("Experience (one per line)")
-                education = st.text_area("Education (one per line)")
-                skills = st.text_area("Skills (one per line)")
-                
-                if st.button("Generate Website"):
-                    user_data = {
-                        "name": name,
-                        "title": title,
-                        "experience": experience.split("\n"),
-                        "education": education.split("\n"),
-                        "skills": skills.split("\n")
-                    }
-                    prompt = f"Generate a personal website with this information: {json.dumps(user_data)}"
-                    st.session_state.chat_history.append({"role": "user", "content": prompt})
-                    
-            elif tool_option == "LinkedIn Optimizer":
-                st.subheader("LinkedIn Profile")
-                headline = st.text_input("Headline")
-                about = st.text_area("About")
-                profile_experience = st.text_area("Experience")
-                profile_skills = st.text_area("Skills")
-                
-                if st.button("Optimize Profile"):
-                    profile_data = {
-                        "headline": headline,
-                        "about": about,
-                        "experience": profile_experience.split("\n"),
-                        "skills": profile_skills.split("\n")
-                    }
-                    prompt = f"Optimize this LinkedIn profile: {json.dumps(profile_data)}"
-                    st.session_state.chat_history.append({"role": "user", "content": prompt})
+            ### Example Prompts
+            - "Help me create a personal website with my experience..."
+            - "Can you optimize my LinkedIn profile?"
+            - "I need help improving my GitHub profile..."
+            """)
         
         # Main chat interface
         st.header("Chat Interface")
