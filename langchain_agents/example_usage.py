@@ -5,7 +5,7 @@ import os
 
 async def main():
     # Read API key from secrets.toml
-    secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.streamlit', 'secrets.toml')
+    secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'secrets.toml')
     secrets = toml.load(secrets_path)
     os.environ['TOGETHER_API_KEY'] = secrets['TOGETHER_API_KEY']
 

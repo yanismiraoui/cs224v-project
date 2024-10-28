@@ -6,7 +6,7 @@ import os
 
 # Initialize environment variables and configurations
 try:
-    secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.streamlit', 'secrets.toml')
+    secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'secrets.toml')
     secrets = toml.load(secrets_path)
     os.environ['TOGETHER_API_KEY'] = secrets['TOGETHER_API_KEY']
 except Exception as e:
