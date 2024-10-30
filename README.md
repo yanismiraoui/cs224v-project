@@ -35,3 +35,25 @@ This project implements a conversational LLM agent that assists users with:
 ## Installation
 
 1. Clone the repository:
+```bash
+git clone https://github.com/yanismiraoui/cs224v-project.git
+```
+
+2. Install the dependencies (recommended to use a virtual environment):
+```bash
+pip install -r requirements.txt
+```
+
+3. Set your Together API key in a `secrets.toml` file.
+
+4. Run the Streamlit app:
+```bash
+streamlit run langchain_agents/streamlit_app.py
+```
+
+5. Enjoy!
+
+(Optional) You can also run an example usage of the agent:
+```bash
+python langchain_agents/example_usage.py
+```

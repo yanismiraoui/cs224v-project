@@ -30,7 +30,7 @@ class TogetherLLM(LLM):
             prompt=formatted_prompt,
             model=self.model_name,
             temperature=self.temperature,
-            stop=stop or ["<human>", "</human>", "<assistant>", "</assistant>"]
+            stop=stop,
         )
         output = response['choices'][0]['text'].strip()
         print("Output from TogetherLLM:", output)
