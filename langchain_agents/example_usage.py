@@ -4,11 +4,6 @@ import toml
 import os
 
 async def main():
-    # Read API key from secrets.toml
-    secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'secrets.toml')
-    secrets = toml.load(secrets_path)
-    os.environ['TOGETHER_API_KEY'] = secrets['TOGETHER_API_KEY']
-
     # Initialize agent with API key from secrets
     agent = JobApplicationAgent()
     
@@ -27,6 +22,8 @@ async def main():
     response = await agent.process(website_query)
     print("Website Generation Response:", response)
     
+
+    agent = JobApplicationAgent()
     # Example: Optimize LinkedIn profile
     linkedin_query = """
     Please optimize my LinkedIn profile:

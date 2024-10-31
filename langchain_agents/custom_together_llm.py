@@ -1,7 +1,9 @@
 from typing import Any, List, Mapping, Optional
 from langchain.llms.base import LLM
 from langchain.callbacks.manager import CallbackManagerForLLMRun
-import together
+from together import Together
+import os
+import toml
 
 class TogetherLLM(LLM):
     """Custom LangChain LLM wrapper for Together AI."""
@@ -23,16 +25,26 @@ class TogetherLLM(LLM):
         **kwargs: Any,
     ) -> str:
         """Execute the LLM call."""
+
+        # Read API key from secrets.toml
+        secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'secrets.toml')
+        secrets = toml.load(secrets_path)
+        os.environ['TOGETHER_API_KEY'] = secrets['TOGETHER_API_KEY']
+        client = Together()
+
         # Format the prompt for chat
         formatted_prompt = f"<human>: {prompt}\n<assistant>:"
-
-        response = together.Complete.create(
-            prompt=formatted_prompt,
+        response = client.chat.completions.create(
             model=self.model_name,
-            temperature=self.temperature,
-            stop=stop,
+            messages=[
+                {"role": "system", "content": formatted_prompt}
+            ],
+            stream=False,
+            response_format={"type": "json_object"},
+            temperature=self.temperature
         )
-        output = response['choices'][0]['text'].strip()
+        print(response)
+        output = response.choices[0].message.content
         print("Output from TogetherLLM:", output)
         return output
 
