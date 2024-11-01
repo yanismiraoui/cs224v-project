@@ -22,6 +22,7 @@ class TogetherLLM(LLM):
         self,
         prompt: str,
         stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> str:
         """Execute the LLM call."""

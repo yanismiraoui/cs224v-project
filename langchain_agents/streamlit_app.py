@@ -3,6 +3,8 @@ import asyncio
 from agent import JobApplicationAgent
 import toml
 import os
+from typing import Union, BinaryIO
+import io
 
 # Initialize environment variables and configurations
 try:
@@ -21,6 +23,10 @@ class StreamlitUI:
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
             
+        # Add file upload state
+        if 'uploaded_resume' not in st.session_state:
+            st.session_state.uploaded_resume = None
+    
     @staticmethod
     async def initialize_agent() -> JobApplicationAgent:
         """Initialize the agent asynchronously."""
@@ -36,10 +42,14 @@ class StreamlitUI:
         for message in st.session_state.chat_history:
             self.render_chat_message(message["role"], message["content"])
             
-    async def process_input(self, user_input: str) -> str:
+    async def process_input(self, user_input: str, pdf_file: BinaryIO = None) -> str:
         """Process user input and get agent response."""
         try:
-            response = await st.session_state.agent.process(user_input)
+            if pdf_file:
+                response = await st.session_state.agent.process(user_input, resume_pdf=pdf_file)
+            else:
+                response = await st.session_state.agent.process(user_input)
+                
             if isinstance(response, dict):
                 return response.get('output', str(response))
             return str(response)
@@ -64,11 +74,18 @@ class StreamlitUI:
         
         with col2:
             st.header("Tools & Examples")
+            
+            # Add file uploader in the tools section
+            uploaded_file = st.file_uploader("Upload your resume (PDF)", type=['pdf'])
+            if uploaded_file:
+                st.session_state.uploaded_resume = uploaded_file
+                st.success("Resume uploaded successfully!")
+            
             with st.expander("Available Tools", expanded=True):
                 st.markdown("""
                 1. **Website Generator** 📝
-                   - Creates professional website content
-                   - Optimizes for personal branding
+                   - Creates professional website content from resume
+                   - Upload your PDF resume to get started
                 
                 2. **Profile Optimizer** 🔍
                    - LinkedIn profile optimization
@@ -100,7 +117,17 @@ class StreamlitUI:
                 
                 # Process input with loading indicator
                 with st.spinner("Processing your request..."):
-                    response = asyncio.run(self.process_input(user_input))
+                    # If resume is uploaded and user wants website content
+                    if st.session_state.uploaded_resume and "website" in user_input.lower():
+                        # Reset file pointer to beginning
+                        st.session_state.uploaded_resume.seek(0)
+                        # Convert to BytesIO
+                        pdf_bytes = io.BytesIO(st.session_state.uploaded_resume.read())
+                        # Add file context to the request
+                        enhanced_input = f"Using the uploaded resume, {user_input}"
+                        response = asyncio.run(self.process_input(enhanced_input, pdf_bytes))
+                    else:
+                        response = asyncio.run(self.process_input(user_input))
                 
                 # Add assistant response to chat
                 self.render_chat_message("assistant", response)
