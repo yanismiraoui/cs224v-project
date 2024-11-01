@@ -1,9 +1,13 @@
 from langchain.agents import AgentExecutor, create_structured_chat_agent
 from langchain.memory import ConversationBufferMemory
-from custom_together_llm import TogetherLLM
-from tools import generate_website_content, optimize_profile
+from typing import Union, BinaryIO, Optional
+from tools import WebsiteContentTool, ProfileOptimizerTool
 import asyncio
 from langchain_core.prompts import ChatPromptTemplate
+from typing import Union, BinaryIO, Optional
+from custom_together_llm import TogetherLLM
+
+
 
 prompt = ChatPromptTemplate.from_messages([
   ("system", """Respond to the human as helpfully and accurately as possible. You have access to the following tools:
@@ -53,9 +57,13 @@ class JobApplicationAgent:
     def __init__(self):
         """Initialize the job application agent with LangChain components."""
         self.llm = TogetherLLM(temperature=0.1)
+        
+        # Initialize tools
+        self.website_tool = WebsiteContentTool()
+        self.profile_tool = ProfileOptimizerTool()
         self.tools = [
-            generate_website_content,
-            optimize_profile
+            self.website_tool,
+            self.profile_tool
         ]
         
         self.memory = ConversationBufferMemory(
@@ -78,8 +86,22 @@ class JobApplicationAgent:
             max_iterations=5,
         )
     
-    async def process(self, user_input: str) -> str:
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, self.agent_executor.invoke, {"input": user_input})
-        print("Raw agent response:", result)
-        return result.get("output", "No output found.")
+    async def process(self, user_input: str, resume_pdf: Optional[BinaryIO] = None) -> str:
+        """Process user input and get agent response."""
+        try:
+            if resume_pdf:
+                # Update: properly set the resume content
+                self.profile_tool.set_resume(resume_pdf)
+                self.website_tool.set_resume(resume_pdf)
+                enhanced_input = f"{user_input} (Using the provided resume PDF)"
+            else:
+                enhanced_input = user_input
+            
+            result = await self.agent_executor.ainvoke({"input": enhanced_input})
+            print("Raw agent response:", result)
+            return result.get("output", "No output found.")
+            
+        except Exception as e:
+            error_message = f"Error processing your request: {str(e)}"
+            print(error_message)
+            return error_message
