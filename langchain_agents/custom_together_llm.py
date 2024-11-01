@@ -44,7 +44,6 @@ class TogetherLLM(LLM):
             response_format={"type": "json_object"},
             temperature=self.temperature
         )
-        print(response)
         output = response.choices[0].message.content
         print("Output from TogetherLLM:", output)
         return output
