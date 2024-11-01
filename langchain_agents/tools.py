@@ -1,5 +1,4 @@
-from langchain.tools import tool
-from langchain.tools import BaseTool
+from langchain.tools import tool, BaseTool
 from typing import Optional, Union, BinaryIO
 from pypdf import PdfReader
 from langchain.prompts import ChatPromptTemplate

@@ -27,6 +27,7 @@ env/
 ENV/
 .env
 .venv
+cs224v/
 
 # Streamlit secrets
 .streamlit/secrets.toml
