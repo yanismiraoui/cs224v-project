@@ -1,4 +1,10 @@
-from langchain.tools import tool
+from langchain.tools import tool, BaseTool
+from typing import Optional, Union, BinaryIO
+from pypdf import PdfReader
+from langchain.prompts import ChatPromptTemplate
+from custom_together_llm import TogetherLLM
+from pydantic import Field
+import PyPDF2
 from github import Github
 
 @tool
