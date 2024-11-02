@@ -78,10 +78,10 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
     # Generate website content
     try:
         if parsed_resume:
-            content_prompt = """Create professional website content in JavaScript, HTML and CSS using the provided resume data. 
+            content_prompt = """Create a professional website content in JavaScript, HTML and CSS using the provided resume data. 
             Take your time and make sure to include all the information you have. You can create as many pages as you want.
             Make sure to have a very nice design and layout that is easy to read and is visually appealing.
-            Include as many as possible nice animations and transitions if you can.
+            Include as many as possible nice animations and transitions if you can but make sure they show up on all devices properly.
             Make sure to include these sections but also add any additional information you think is relevant:
 
             # Professional Summary
@@ -101,7 +101,7 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
             - Focus on measurable achievements
             - Keep tone professional but engaging
             - Include specific numbers and metrics where available
-            - Make it look modern, colorful and up to date
+            - Make it look colorful and up to date
             - Make sure the title is the name of the person
             - Make sure the website does not have any layout issues
 
