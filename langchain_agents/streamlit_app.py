@@ -3,8 +3,9 @@ import asyncio
 from agent import JobApplicationAgent
 import toml
 import os
-from typing import Union, BinaryIO
+from typing import BinaryIO
 import io
+from PyPDF2 import PdfReader
 
 # Initialize environment variables and configurations
 try:
@@ -15,6 +16,11 @@ except Exception as e:
     st.error(f"Error loading secrets: {str(e)}")
     st.stop()
 
+def get_pdf_text(pdf_file: BinaryIO) -> str:
+    """Extract text from a PDF file."""
+    reader = PdfReader(pdf_file)
+    return "\n".join([page.extract_text() for page in reader.pages])
+
 class StreamlitUI:
     def __init__(self):
         # Initialize session state
@@ -22,8 +28,6 @@ class StreamlitUI:
             st.session_state.agent = asyncio.run(self.initialize_agent())
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
-            
-        # Add file upload state
         if 'uploaded_resume' not in st.session_state:
             st.session_state.uploaded_resume = None
     
@@ -42,11 +46,11 @@ class StreamlitUI:
         for message in st.session_state.chat_history:
             self.render_chat_message(message["role"], message["content"])
             
-    async def process_input(self, user_input: str, pdf_file: BinaryIO = None) -> str:
+    async def process_input(self, user_input: str, pdf_text: str = None) -> str:
         """Process user input and get agent response."""
         try:
-            if pdf_file:
-                response = await st.session_state.agent.process(user_input, resume_pdf=pdf_file)
+            if pdf_text:
+                response = await st.session_state.agent.process(user_input, resume_content=pdf_text)
             else:
                 response = await st.session_state.agent.process(user_input)
                 
@@ -118,14 +122,9 @@ class StreamlitUI:
                 # Process input with loading indicator
                 with st.spinner("Processing your request..."):
                     # If resume is uploaded and user wants website content
-                    if st.session_state.uploaded_resume and "website" in user_input.lower():
-                        # Reset file pointer to beginning
-                        st.session_state.uploaded_resume.seek(0)
-                        # Convert to BytesIO
-                        pdf_bytes = io.BytesIO(st.session_state.uploaded_resume.read())
-                        # Add file context to the request
-                        enhanced_input = f"Using the uploaded resume, {user_input}"
-                        response = asyncio.run(self.process_input(enhanced_input, pdf_bytes))
+                    if st.session_state.uploaded_resume:
+                        pdf_text = get_pdf_text(st.session_state.uploaded_resume)
+                        response = asyncio.run(self.process_input(user_input, pdf_text))
                     else:
                         response = asyncio.run(self.process_input(user_input))
                 
