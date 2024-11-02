@@ -1,10 +1,8 @@
 from langchain.agents import AgentExecutor, create_structured_chat_agent
 from langchain.memory import ConversationBufferMemory
-from typing import Union, BinaryIO, Optional
-from tools import WebsiteContentTool, ProfileOptimizerTool
-import asyncio
+from tools import generate_website_content, optimize_profile
 from langchain_core.prompts import ChatPromptTemplate
-from typing import Union, BinaryIO, Optional
+from typing import Optional
 from custom_together_llm import TogetherLLM
 
 
@@ -45,7 +43,9 @@ Action:
   "action_input": "Final response to human"
 }}
 
-Begin! Reminder to ALWAYS respond with a valid json blob of a single action. Use tools if necessary. Respond directly if appropriate. Format is Action:```$JSON_BLOB```then Observation"""),
+Begin! Reminder to ALWAYS respond with a valid json blob of a single action. Use tools if necessary. Respond directly if appropriate. Format is Action:```$JSON_BLOB```then Observation
+Make sure to respond the full answer, to the user's question. For example, if the user asks for a website, make sure to respond with the full website content, not just an answer like "Website generated successfully".
+"""),
 ("placeholder", "{chat_history}"),
 ("human", """{input}
 
@@ -59,11 +59,9 @@ class JobApplicationAgent:
         self.llm = TogetherLLM(temperature=0.1)
         
         # Initialize tools
-        self.website_tool = WebsiteContentTool()
-        self.profile_tool = ProfileOptimizerTool()
         self.tools = [
-            self.website_tool,
-            self.profile_tool
+            generate_website_content,
+            optimize_profile
         ]
         
         self.memory = ConversationBufferMemory(
@@ -86,22 +84,15 @@ class JobApplicationAgent:
             max_iterations=5,
         )
     
-    async def process(self, user_input: str, resume_pdf: Optional[BinaryIO] = None) -> str:
-        """Process user input and get agent response."""
-        try:
-            if resume_pdf:
-                # Update: properly set the resume content
-                self.profile_tool.set_resume(resume_pdf)
-                self.website_tool.set_resume(resume_pdf)
-                enhanced_input = f"{user_input} (Using the provided resume PDF)"
-            else:
-                enhanced_input = user_input
-            
-            result = await self.agent_executor.ainvoke({"input": enhanced_input})
-            print("Raw agent response:", result)
-            return result.get("output", "No output found.")
-            
-        except Exception as e:
-            error_message = f"Error processing your request: {str(e)}"
-            print(error_message)
-            return error_message
+    async def process(self, user_input: str, resume_content: Optional[str] = None) -> str:
+      """Process user input and get agent response."""
+      try:  
+          combined_input = user_input
+          if resume_content:
+              combined_input = f"{user_input}\nResume Content: {resume_content}"
+      
+          result = await self.agent_executor.ainvoke({"input": combined_input})
+          print("Raw agent response:", result)
+          return result.get("output", str(result))
+      except Exception as e:
+          return f"Error: {str(e)}"
