@@ -1,16 +1,22 @@
 from langchain.agents import AgentExecutor, create_structured_chat_agent
 from langchain.memory import ConversationBufferMemory
-from typing import Union, BinaryIO, Optional
-from tools import WebsiteContentTool, ProfileOptimizerTool
-import asyncio
+from tools import generate_website_content, optimize_profile
 from langchain_core.prompts import ChatPromptTemplate
-from typing import Union, BinaryIO, Optional
+from typing import Optional, Dict, Any, List
 from custom_together_llm import TogetherLLM
+import logging
+from datetime import datetime
+from pathlib import Path
 
 
 
 prompt = ChatPromptTemplate.from_messages([
-  ("system", """Respond to the human as helpfully and accurately as possible. You have access to the following tools:
+  ("system", """You are a job application assistant. You can help a user with creating a professional website and optimizing their LinkedIn or GitHub profile. 
+   
+Respond to the human as helpfully and accurately as possible. Be complete in your response and do not hesitate to ask for clarification if needed. 
+Be proactive and suggest actions to the user for next steps.
+   
+You have access to the following tools:
 
 {tools}
 
@@ -45,7 +51,11 @@ Action:
   "action_input": "Final response to human"
 }}
 
-Begin! Reminder to ALWAYS respond with a valid json blob of a single action. Use tools if necessary. Respond directly if appropriate. Format is Action:```$JSON_BLOB```then Observation"""),
+Begin! Reminder to ALWAYS respond with a valid json blob of a single action. Use tools if necessary. Respond directly if appropriate. Format is Action:```$JSON_BLOB```then Observation
+Make sure to use the tools to respond the full answer, to the user's question but if you are not able to use the tools or do not have enough information, respond directly. 
+Do not call tools if you do not need to, just give the final answer directly.
+If the user asks for a website, make sure to respond with the full website content, not just an answer like "Website generated successfully", include the website code correctly formatted in the response.
+"""),
 ("placeholder", "{chat_history}"),
 ("human", """{input}
 
@@ -53,17 +63,32 @@ Begin! Reminder to ALWAYS respond with a valid json blob of a single action. Use
  (reminder to respond in a JSON blob no matter what)"""),
 ])
 
+def setup_logging():
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"agent_actions_{timestamp}.log"
+    
+    logging.basicConfig(
+        filename=str(log_file),
+        level=logging.INFO,
+        format='%(asctime)s - %(message)s'
+    )
+
 class JobApplicationAgent:
     def __init__(self):
         """Initialize the job application agent with LangChain components."""
+        setup_logging()  # Initialize logging
         self.llm = TogetherLLM(temperature=0.1)
         
-        # Initialize tools
-        self.website_tool = WebsiteContentTool()
-        self.profile_tool = ProfileOptimizerTool()
+        # Add action history attribute
+        self.action_history: List[Dict[str, Any]] = []
+        
+        # Initialize tools with logging wrapper
         self.tools = [
-            self.website_tool,
-            self.profile_tool
+            self._create_logging_tool(generate_website_content),
+            self._create_logging_tool(optimize_profile)
         ]
         
         self.memory = ConversationBufferMemory(
@@ -86,22 +111,47 @@ class JobApplicationAgent:
             max_iterations=5,
         )
     
-    async def process(self, user_input: str, resume_pdf: Optional[BinaryIO] = None) -> str:
-        """Process user input and get agent response."""
-        try:
-            if resume_pdf:
-                # Update: properly set the resume content
-                self.profile_tool.set_resume(resume_pdf)
-                self.website_tool.set_resume(resume_pdf)
-                enhanced_input = f"{user_input} (Using the provided resume PDF)"
-            else:
-                enhanced_input = user_input
+    def _create_logging_tool(self, tool):
+        """Wrap a tool with logging functionality."""
+        original_func = tool.func
+        
+        def logged_func(*args, **kwargs):
+            # Create log entry
+            tool_parameters = tool.func.__code__.co_varnames[:tool.func.__code__.co_argcount]
+            tool_input = {
+                param: arg for param, arg in zip(tool_parameters, args)
+            }
+            tool_input.update(kwargs)
             
-            result = await self.agent_executor.ainvoke({"input": enhanced_input})
-            print("Raw agent response:", result)
-            return result.get("output", "No output found.")
+            # Create log entry
+            log_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "tool_name": tool.name,
+                "tool_input": tool_input
+            }
             
-        except Exception as e:
-            error_message = f"Error processing your request: {str(e)}"
-            print(error_message)
-            return error_message
+            # Add to action history
+            self.action_history.append(log_entry)
+            
+            # Call the original function
+            return original_func(*args, **kwargs)
+        
+        tool.func = logged_func
+        return tool
+    
+    def get_action_history(self) -> List[Dict[str, Any]]:
+        """Return the action history."""
+        return self.action_history
+    
+    async def process(self, user_input: str, resume_content: Optional[str] = None) -> str:
+      """Process user input and get agent response."""
+      try:  
+          combined_input = user_input
+          if resume_content:
+              combined_input = f"{user_input}\nResume Content: {resume_content}"
+      
+          result = await self.agent_executor.ainvoke({"input": combined_input})
+          print("Raw agent response:", result)
+          return result.get("output", str(result))
+      except Exception as e:
+          return f"Error: {str(e)}"

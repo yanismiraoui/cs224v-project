@@ -34,19 +34,16 @@ class TogetherLLM(LLM):
         client = Together()
 
         # Format the prompt for chat
-        formatted_prompt = f"<human>: {prompt}\n<assistant>:"
         response = client.chat.completions.create(
             model=self.model_name,
             messages=[
-                {"role": "system", "content": formatted_prompt}
+                {"role": "system", "content": prompt}
             ],
             stream=False,
             response_format={"type": "json_object"},
             temperature=self.temperature
         )
-        print(response)
         output = response.choices[0].message.content
-        print("Output from TogetherLLM:", output)
         return output
 
     @property

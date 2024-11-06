@@ -3,8 +3,8 @@ import asyncio
 from agent import JobApplicationAgent
 import toml
 import os
-from typing import Union, BinaryIO
-import io
+from typing import BinaryIO
+import pymupdf
 
 # Initialize environment variables and configurations
 try:
@@ -15,6 +15,14 @@ except Exception as e:
     st.error(f"Error loading secrets: {str(e)}")
     st.stop()
 
+def get_pdf_text(pdf_file: BinaryIO) -> str:
+    """Extract text from a PDF file."""
+    pdf = pymupdf.open(stream=pdf_file.read(), filetype="pdf")
+    text = ''
+    for page in pdf.pages():
+        text += page.get_text()
+    return text
+
 class StreamlitUI:
     def __init__(self):
         # Initialize session state
@@ -22,8 +30,6 @@ class StreamlitUI:
             st.session_state.agent = asyncio.run(self.initialize_agent())
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
-            
-        # Add file upload state
         if 'uploaded_resume' not in st.session_state:
             st.session_state.uploaded_resume = None
     
@@ -42,11 +48,11 @@ class StreamlitUI:
         for message in st.session_state.chat_history:
             self.render_chat_message(message["role"], message["content"])
             
-    async def process_input(self, user_input: str, pdf_file: BinaryIO = None) -> str:
+    async def process_input(self, user_input: str, pdf_text: str = None) -> str:
         """Process user input and get agent response."""
         try:
-            if pdf_file:
-                response = await st.session_state.agent.process(user_input, resume_pdf=pdf_file)
+            if pdf_text:
+                response = await st.session_state.agent.process(user_input, resume_content=pdf_text)
             else:
                 response = await st.session_state.agent.process(user_input)
                 
@@ -57,6 +63,22 @@ class StreamlitUI:
             error_message = f"Error processing your request: {str(e)}"
             st.error(error_message)
             return error_message
+    
+    def format_action_history(self) -> str:
+        """Format the action history for display."""
+        if not st.session_state.agent.action_history:
+            return "No actions recorded yet"
+        
+        formatted_entries = []
+        for entry in reversed(st.session_state.agent.action_history):  # Most recent first
+            formatted_entry = (
+                f"🔧 Tool: {entry['tool_name']}\n"
+                f"📝 Input: {entry['tool_input']}\n"
+                f"⏰ {entry['timestamp']}\n"
+            )
+            formatted_entries.append(formatted_entry)
+        
+        return formatted_entries
     
     def run(self):
         """Run the Streamlit application."""
@@ -97,13 +119,23 @@ class StreamlitUI:
                 Try these prompts:
                 - "Create a personal website showcasing my experience as a software engineer with 5 years of experience in Python and JavaScript"
                 - "Optimize my LinkedIn profile: [URL]"
-                - "Help improve my GitHub profile at [username]"
+                - "Help improve my GitHub profile at [URL]"
                 """)
+
+            # Action History Panel
+            with st.expander("📋 Action History", expanded=False):
+                action_history = self.format_action_history()
+                if action_history == "No actions recorded yet":
+                    st.markdown("*No actions recorded yet* ⏱️")
+                elif isinstance(action_history, list):
+                    for entry in action_history:
+                        st.markdown(f"```\n{entry}\n```")   
             
             if st.button("Clear Chat History", type="secondary"):
                 st.session_state.chat_history = []
+                st.session_state.agent.action_history = []
                 st.rerun()
-        
+
         with col1:
             # Chat interface
             st.header("Chat Interface")
@@ -118,14 +150,9 @@ class StreamlitUI:
                 # Process input with loading indicator
                 with st.spinner("Processing your request..."):
                     # If resume is uploaded and user wants website content
-                    if st.session_state.uploaded_resume and "website" in user_input.lower():
-                        # Reset file pointer to beginning
-                        st.session_state.uploaded_resume.seek(0)
-                        # Convert to BytesIO
-                        pdf_bytes = io.BytesIO(st.session_state.uploaded_resume.read())
-                        # Add file context to the request
-                        enhanced_input = f"Using the uploaded resume, {user_input}"
-                        response = asyncio.run(self.process_input(enhanced_input, pdf_bytes))
+                    if st.session_state.uploaded_resume:
+                        pdf_text = get_pdf_text(st.session_state.uploaded_resume)
+                        response = asyncio.run(self.process_input(user_input, pdf_text))
                     else:
                         response = asyncio.run(self.process_input(user_input))
                 

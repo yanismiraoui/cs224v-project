@@ -1,156 +1,218 @@
-from langchain.tools import tool, BaseTool
-from typing import Optional, Union, BinaryIO
-from pypdf import PdfReader
-from langchain.prompts import ChatPromptTemplate
+from langchain.tools import tool
+from typing import Optional
 from custom_together_llm import TogetherLLM
-from pydantic import Field
-import PyPDF2
 from github import Github
+from pydantic import BaseModel, Field
+import requests
+import json
+from bs4 import BeautifulSoup
 
+def parse_resume(resume_content: str, llm: Optional[object] = None) -> str:
+    """
+    Parse resume content into a structured JSON format.
+    """
+    parse_prompt = """You are a resume parser. Extract the following information in a structured format:
+    1. Full Name
+    2. Work Experience (including position, company, dates, and quantified achievements)
+    3. Skills (both technical and soft skills)
+    4. Education (including degree, school, and dates)
+    5. Personal Projects (if any)
+    6. Awards and Honors (if any)
+    7. Publications (if any)
+    8. Languages (if any)
 
-class WebsiteContentTool(BaseTool):
-    """Tool that generates website content from a resume or text description."""
-    name: str = Field(default="generate_website_content")
-    description: str = Field(default="""Generate professional website content by analyzing a resume PDF if provided, 
-    or based on the description given. The content will include sections for professional summary, 
-    experience with quantified achievements, and skills.""")
-    resume_content: Optional[str] = Field(default=None)
-    llm: Optional[TogetherLLM] = Field(default=None)
-    
-    def __init__(self, **data):
-        super().__init__(**data)
-        self.llm = TogetherLLM(temperature=0.1)
-    
-    def set_resume(self, resume_pdf: BinaryIO) -> None:
-        """Process, parse, and store structured resume content."""
-        try:
-            # First extract text from PDF
-            pdf_reader = PyPDF2.PdfReader(resume_pdf)
-            text_content = ""
-            for page in pdf_reader.pages:
-                text_content += page.extract_text()
-            
-            # Parse the text using the structured format
-            parse_prompt = """You are a resume parser. Extract the following information in a structured format:
-            1. Full Name
-            2. Work Experience (including position, company, dates, and quantified achievements)
-            3. Skills (both technical and soft skills)
-            
-            Format the output as JSON with the following structure:
+    Output ONLY in JSON format. Do not include any comments or explanations:
+    {
+        "name": "string",
+        "experience": [
             {
-                "name": "string",
-                "experience": [
-                    {
-                        "position": "string",
-                        "company": "string",
-                        "dates": "string",
-                        "achievements": ["string"]
-                    }
-                ],
-                "skills": ["string"]
-            }"""
-            
-            messages = [
-                {"role": "system", "content": parse_prompt},
-                {"role": "user", "content": f"Parse this resume:\n\n{text_content}"}
-            ]
-            self.resume_content = self.llm.invoke(messages)
-            print(self.resume_content)
-            
-        except Exception as e:
-            print(f"Error processing PDF: {str(e)}")
-            self.resume_content = None
+                "position": "string",
+                "company": "string",
+                "dates": "string",
+                "achievements": ["string"]
+                ...
+            }
+        ],
+        "skills": ["string"]
+    }
+    However if the resume is not provided or you think it does not contain enough information return in JSON format:
+    {
+        "ERROR": "NOT ENOUGH INFORMATION",
+        "information_needed": "..."
+    }
+    """
     
-    def _run(self, query: str) -> str:
-        """Generate website content based on the query and resume if available."""
-        try:
-            if self.resume_content:
-                messages = [
-                    {
-                        "role": "system",
-                        "content": """You are a professional website content writer. Your task is to directly write the website content, not to describe what you will do. 
-                        Use the provided JSON resume data to create content with these sections:
-                        
-                        # Professional Summary
-                        [Write a compelling introduction]
-                        
-                        # Experience
-                        [Detail each role with company, dates, and achievements]
-                        
-                        # Skills & Expertise
-                        [List all relevant skills]
-                        
-                        Write in first person, using a confident, professional tone. Focus on quantifiable achievements."""
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Write the website content using this resume data:\n{self.resume_content}"
-                    }
-                ]
-                
-                website_content = self.llm.invoke(messages)
-                return website_content
-            else:
-                return """Please provide the following information to generate website content:
-                1. Your full name
-                2. Professional summary
-                3. Work experience (including company names, positions, dates, and key achievements)
-                4. Skills (both technical and soft skills)
-                
-                You can also upload a resume PDF for automatic processing."""
-                
-        except Exception as e:
-            return f"Error processing request: {str(e)}"
-    
-    async def _arun(self, query: str) -> str:
-        """Async version of _run"""
-        return self._run(query)
+    return llm.invoke([
+        {"role": "system", "content": parse_prompt},
+        {"role": "user", "content": f"Parse this resume:\n\n{resume_content}"}
+    ]).replace("```json", "").replace("```", "")
 
-class ProfileOptimizerTool(BaseTool):
-    """Tool that optimizes professional profiles."""
-    name: str = Field(default="optimize_profile")
-    description: str = Field(default="Optimize professional profiles (LinkedIn/GitHub)")
-    resume_content: Optional[str] = Field(default=None)
+def get_github_profile(url: str, llm: Optional[object] = None) -> str:
+    """
+    Get GitHub profile content and parse it into a structured JSON format.
+    """
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    content = soup.find('div', class_='application-main')
 
-    def __init__(self, **data):
-        super().__init__(**data)
-    
-    def set_resume(self, resume_pdf: BinaryIO) -> None:
-        """Process and store resume PDF content."""
-        try:
-            pdf_reader = PyPDF2.PdfReader(resume_pdf)
-            text_content = ""
-            for page in pdf_reader.pages:
-                text_content += page.extract_text()
-            self.resume_content = text_content
-        except Exception as e:
-            print(f"Error processing PDF: {str(e)}")
-            self.resume_content = None
-    
-    def _run(self, url: str, profile_type: str) -> str:
-        """Optimize professional profiles.
-        
-        Args:
-            url: The profile URL to optimize
-            profile_type: The type of profile (linkedin/github)
+    return llm.invoke([
+        {"role": "system", "content": "You are a GitHub profile parser. Extract the following information in a structured format: "},
+        {"role": "user", "content": f"Parse this GitHub profile into an organized JSON format:\n\n{content}"}
+    ])
+
+# Define input schemas for tools
+class WebsiteContentInput(BaseModel):
+    resume_content: Optional[str] = Field(None, description="Optional resume text content")
+    query: Optional[str] = Field(None, description="Optional description or additional specific instructions for content generation")
+    llm: Optional[object] = Field(None, description="Optional LLM instance to use")
+
+class ProfileOptimizerInput(BaseModel): 
+    url: str = Field(description="The profile URL to optimize")
+    profile_type: str = Field(description="The type of profile (linkedin/github)")
+    resume_content: Optional[str] = Field(None, description="Optional resume text content")
+    llm: Optional[object] = Field(None, description="Optional LLM instance to use")
+
+@tool(args_schema=WebsiteContentInput)
+def generate_website_content(query: Optional[str] = None, resume_content: Optional[str] = None, llm: Optional[TogetherLLM] = None) -> str:
+    """
+    Generate professional website content by analyzing a resume text content.
+    If you are not provided with a resume text content, you can provide a description or additional instructions for content generation.
+    The content will include sections for professional summary, experience with quantified achievements, and skills.
+
+    Args:
+        query: Optional description or additional instructions for content generation
+        resume_content: Optional string containing resume text content
+        llm: Optional LLM instance to use (will create new one if not provided)
+
+    Returns:
+        str: Generated website content using HTML, JavaScript and CSS
+    """
+    # Initialize LLM with conservative temperature for reliable output
+    llm = llm or TogetherLLM(temperature=0.1)
+
+    # Parse resume if provided
+    parsed_resume = None
+    if isinstance(resume_content, str):
+        parsed_resume = parse_resume(resume_content, llm)
+        if json.loads(parsed_resume).get("ERROR") == "NOT ENOUGH INFORMATION":
+            return "Not enough information to generate website content. Please provide the following information: " + json.loads(parsed_resume)["information_needed"]
+
+    # Generate website content
+    try:
+        content_prompt = """Create a professional website content in JavaScript, HTML and CSS using the provided resume data. 
+        Take your time and make sure to include all the information you have. You can create as many pages as you want.
+        Make sure to have a very nice design and layout that is easy to read and is visually appealing.
+        Include as many as possible nice animations and transitions if you can but make sure they show up on all devices properly.
+        Make sure to include these sections but also add any additional information you think is relevant:
+
+        # Professional Summary
+        Write a compelling first-person introduction highlighting key strengths and career focus.
+
+        # Experience
+        For each role, include:
+        - Position and company
+        - Dates
+        - 3-4 quantified achievements or key responsibilities
+
+        # Skills & Expertise
+        Group skills by category (e.g., Technical, Leadership, Industry Knowledge)
+
+        Style guidelines:
+        - Use first-person perspective
+        - Focus on measurable achievements
+        - Keep tone professional but engaging
+        - Include specific numbers and metrics where available
+        - Make it look colorful and up to date
+        - Make sure the title is the name of the person
+        - Make sure the website does not have any layout issues
+
+        Remember a colorful and modern design is very important. 
+        This should not be a template website, it should be original and unique to you and the user do not need to modify it for it to be fully functional.
+        Make sure the website is original and not copy-pasted from other websites. BE CREATIVE.
         """
-        return f"Profile optimized for {url} of type {profile_type}"
-    
-    async def _arun(self, url: str, profile_type: str) -> str:
-        """Async version of _run"""
-        return self._run(url, profile_type)
+        if parsed_resume:
+            return llm.invoke([
+                {"role": "system", "content": content_prompt},
+                {"role": "user", "content": f"Generate content using this resume data and these very important additional instructions: {query}\n\nResume data:\n{parsed_resume}"}
+            ])
+        elif query:
+            return llm.invoke([
+                {"role": "system", "content": content_prompt},
+                {"role": "user", "content": f"Generate content using these very important additional instructions: {query}"}
+            ])
+        else:
+            return """Please provide at least the following information to generate website content:
+            1. Your full name
+            2. Professional summary
+            3. Work experience (including company names, positions, dates, and key achievements)
+            4. Skills (both technical and soft skills)
+            
+            You can also upload a resume PDF for automatic processing."""
+            
+    except Exception as e:
+        return f"Error processing request: {str(e)}"
 
+@tool(args_schema=ProfileOptimizerInput)
+def optimize_profile(url: str, profile_type: str, resume_content: Optional[str] = None, llm: Optional[object] = None) -> str:
+    """Optimize professional profiles (LinkedIn/GitHub).
+    
+    Args:
+        url: The profile URL to optimize
+        profile_type: The type of profile (linkedin/github)
+        resume_content: Optional string containing resume text content
+        llm: Optional LLM instance to use (will create new one if not provided)
+
+    Returns:
+        str: Optimized profile content
+    """
+    if profile_type.lower() not in ['linkedin', 'github']:
+        return "Error: Profile type must be either 'LinkedIn' or 'GitHub'"
+    
+    content = None
+    if profile_type.lower() == 'linkedin':
+        content = ""
+    elif profile_type.lower() == 'github':
+        content = get_github_profile(url, llm)
+        
+    parsed_resume = None
+    if isinstance(resume_content, str):
+        parsed_resume = parse_resume(resume_content, llm)
+        if json.loads(parsed_resume).get("ERROR") == "NOT ENOUGH INFORMATION":
+            return "Not enough information to optimize profile. Please provide the following information: " + json.loads(parsed_resume)["information_needed"]
+
+    if parsed_resume:
+        system_prompt = f"""You are an expert profile optimizer.
+        You are given a resume and a profile URL from a {profile_type} profile.
+        You need to optimize the profile based on the resume data and the profile content.
+        Make sure to include all the information you have and be creative and critical.
+        Remember to make optimize it for {profile_type}.
+        """
+        return llm.invoke([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Optimize this {profile_type} profile:\n{content}\n\nResume data:\n{parsed_resume}"}
+        ])
+    else:
+        return llm.invoke([
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Optimize this {profile_type} profile: {content}"}
+        ])
 
 @tool
-def publish_to_github_pages(content: str, github_token: str, repo_name: str, description: str) -> str:
+def publish_to_github_pages(github_token: str, repo_name: str, description: str, html_content: Optional[str] = None, css_content: Optional[str] = None, javascript_content: Optional[str] = None, llm: Optional[object] = None) -> str:
     """
     Publishes website content to GitHub Pages
+
     Args:
-        content: HTML content to publish
         github_token: GitHub personal access token
         repo_name: Name for the repository (e.g., 'me', 'home', 'portfolio')
         description: Description for the repository
+        html_content: Optional HTML content to publish
+        css_content: Optional CSS content to publish
+        javascript_content: Optional JavaScript content to publish
+        llm: Optional LLM instance to use (will create new one if not provided)
     """
+    llm = llm or TogetherLLM(temperature=0.1)
+    
     try:
         # Initialize GitHub client
         g = Github(github_token)
@@ -173,16 +235,48 @@ def publish_to_github_pages(content: str, github_token: str, repo_name: str, des
             repo.update_file(
                 contents.path,
                 "Update portfolio website",
-                content,
+                html_content,
                 contents.sha
             )
         except:
             repo.create_file(
                 "index.html",
                 "Initial portfolio website",
-                content
+                html_content
             )
-            
+        
+        # create/update the style.css file
+        try:
+            contents = repo.get_contents("style.css")
+            repo.update_file(
+                contents.path,
+                "Update portfolio website",
+                css_content,
+                contents.sha
+            )
+        except:
+            repo.create_file(
+                "style.css",
+                "Initial portfolio website",
+                css_content
+            )
+
+        # create/update the script.js file
+        try:
+            contents = repo.get_contents("script.js")
+            repo.update_file(
+                contents.path,
+                "Update portfolio website",
+                javascript_content,
+                contents.sha
+            )
+        except:
+            repo.create_file(
+                "script.js",
+                "Initial portfolio website",
+                javascript_content
+            )
+        
         # Enable GitHub Pages if not already enabled
         repo.enable_pages(source="main", path="/")
         
@@ -190,3 +284,4 @@ def publish_to_github_pages(content: str, github_token: str, repo_name: str, des
     
     except Exception as e:
         return f"Error publishing website: {str(e)}"
+
