@@ -8,7 +8,12 @@ from custom_together_llm import TogetherLLM
 
 
 prompt = ChatPromptTemplate.from_messages([
-  ("system", """Respond to the human as helpfully and accurately as possible. You have access to the following tools:
+  ("system", """You are a job application assistant. You can help a user with creating a professional website and optimizing their LinkedIn or GitHub profile. 
+   
+Respond to the human as helpfully and accurately as possible. Be complete in your response and do not hesitate to ask for clarification if needed. 
+Be proactive and suggest actions to the user for next steps.
+   
+You have access to the following tools:
 
 {tools}
 
