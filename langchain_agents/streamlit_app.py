@@ -4,7 +4,6 @@ from agent import JobApplicationAgent
 import toml
 import os
 from typing import BinaryIO
-import io
 from PyPDF2 import PdfReader
 
 # Initialize environment variables and configurations
@@ -62,6 +61,22 @@ class StreamlitUI:
             st.error(error_message)
             return error_message
     
+    def format_action_history(self) -> str:
+        """Format the action history for display."""
+        if not st.session_state.agent.action_history:
+            return "No actions recorded yet"
+        
+        formatted_entries = []
+        for entry in reversed(st.session_state.agent.action_history):  # Most recent first
+            formatted_entry = (
+                f"🔧 Tool: {entry['tool_name']}\n"
+                f"📝 Input: {entry['tool_input']}\n"
+                f"⏰ {entry['timestamp']}\n"
+            )
+            formatted_entries.append(formatted_entry)
+        
+        return formatted_entries
+    
     def run(self):
         """Run the Streamlit application."""
         st.set_page_config(
@@ -101,13 +116,22 @@ class StreamlitUI:
                 Try these prompts:
                 - "Create a personal website showcasing my experience as a software engineer with 5 years of experience in Python and JavaScript"
                 - "Optimize my LinkedIn profile: [URL]"
-                - "Help improve my GitHub profile at [username]"
+                - "Help improve my GitHub profile at [URL]"
                 """)
+
+            # Action History Panel
+            with st.expander("📋 Action History", expanded=False):
+                action_history = self.format_action_history()
+                if action_history == "No actions recorded yet":
+                    st.markdown("*No actions recorded yet* ⏱️")
+                elif isinstance(action_history, list):
+                    for entry in action_history:
+                        st.markdown(f"```\n{entry}\n```")   
             
             if st.button("Clear Chat History", type="secondary"):
                 st.session_state.chat_history = []
                 st.rerun()
-        
+
         with col1:
             # Chat interface
             st.header("Chat Interface")

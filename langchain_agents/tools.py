@@ -93,49 +93,44 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
     # Parse resume if provided
     parsed_resume = None
     if isinstance(resume_content, str):
-        try:
-            parsed_resume = parse_resume(resume_content, llm)
-            if json.loads(parsed_resume).get("ERROR") == "NOT ENOUGH INFORMATION":
-                return "Not enough information to generate website content. Please provide the following information: " + json.loads(parsed_resume)["information_needed"]
-            
-        except Exception as e:
-            print(f"Resume parsing failed: {str(e)}")
-            return "Error: Unable to parse resume content. Please check the format and try again."
+        parsed_resume = parse_resume(resume_content, llm)
+        if json.loads(parsed_resume).get("ERROR") == "NOT ENOUGH INFORMATION":
+            return "Not enough information to generate website content. Please provide the following information: " + json.loads(parsed_resume)["information_needed"]
 
     # Generate website content
     try:
+        content_prompt = """Create a professional website content in JavaScript, HTML and CSS using the provided resume data. 
+        Take your time and make sure to include all the information you have. You can create as many pages as you want.
+        Make sure to have a very nice design and layout that is easy to read and is visually appealing.
+        Include as many as possible nice animations and transitions if you can but make sure they show up on all devices properly.
+        Make sure to include these sections but also add any additional information you think is relevant:
+
+        # Professional Summary
+        Write a compelling first-person introduction highlighting key strengths and career focus.
+
+        # Experience
+        For each role, include:
+        - Position and company
+        - Dates
+        - 3-4 quantified achievements or key responsibilities
+
+        # Skills & Expertise
+        Group skills by category (e.g., Technical, Leadership, Industry Knowledge)
+
+        Style guidelines:
+        - Use first-person perspective
+        - Focus on measurable achievements
+        - Keep tone professional but engaging
+        - Include specific numbers and metrics where available
+        - Make it look colorful and up to date
+        - Make sure the title is the name of the person
+        - Make sure the website does not have any layout issues
+
+        Remember a colorful and modern design is very important. 
+        This should not be a template website, it should be original and unique to you and the user do not need to modify it for it to be fully functional.
+        Make sure the website is original and not copy-pasted from other websites. BE CREATIVE.
+        """
         if parsed_resume:
-            content_prompt = """Create a professional website content in JavaScript, HTML and CSS using the provided resume data. 
-            Take your time and make sure to include all the information you have. You can create as many pages as you want.
-            Make sure to have a very nice design and layout that is easy to read and is visually appealing.
-            Include as many as possible nice animations and transitions if you can but make sure they show up on all devices properly.
-            Make sure to include these sections but also add any additional information you think is relevant:
-
-            # Professional Summary
-            Write a compelling first-person introduction highlighting key strengths and career focus.
-
-            # Experience
-            For each role, include:
-            - Position and company
-            - Dates
-            - 3-4 quantified achievements or key responsibilities
-
-            # Skills & Expertise
-            Group skills by category (e.g., Technical, Leadership, Industry Knowledge)
-
-            Style guidelines:
-            - Use first-person perspective
-            - Focus on measurable achievements
-            - Keep tone professional but engaging
-            - Include specific numbers and metrics where available
-            - Make it look colorful and up to date
-            - Make sure the title is the name of the person
-            - Make sure the website does not have any layout issues
-
-            Remember a colorful and modern design is very important. 
-            Make sure the website is original and not copy-pasted from other websites. BE CREATIVE.
-            """
-
             return llm.invoke([
                 {"role": "system", "content": content_prompt},
                 {"role": "user", "content": f"Generate content using this resume data and these very important additional instructions: {query}\n\nResume data:\n{parsed_resume}"}

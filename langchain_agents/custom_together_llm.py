@@ -44,7 +44,6 @@ class TogetherLLM(LLM):
             temperature=self.temperature
         )
         output = response.choices[0].message.content
-        print("\nOutput from TogetherLLM:\n", output)
         return output
 
     @property
