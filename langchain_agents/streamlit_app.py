@@ -97,13 +97,24 @@ class StreamlitUI:
         with col2:
             st.header("Tools & Examples")
             
-            # Add file uploader in the tools section
-            uploaded_file = st.file_uploader("Upload your resume (PDF)", type=['pdf'])
+            # Add file uploader in the tools section with limit of 1 file and 2MB size
+            uploaded_file = st.file_uploader("Upload your resume (PDF)", type=['pdf'], accept_multiple_files=False)
             if uploaded_file:
-                st.session_state.uploaded_resume = uploaded_file
-                st.success("Resume uploaded successfully!")
+                if uploaded_file.size > 2*1024*1024:
+                    st.error("File size limit is 2MB")
+                else:
+                    st.session_state.uploaded_resume = uploaded_file
+                    st.success("Resume uploaded successfully!")
             
-            with st.expander("Available Tools", expanded=True):
+            with st.expander("Example Prompts", expanded=True):
+                st.markdown("""
+                Try these prompts:
+                - "Create a personal website showcasing my experience as a software engineer with 5 years of experience in Python and JavaScript"
+                - "Optimize my LinkedIn profile: [URL]"
+                - "Help improve my GitHub profile at [URL]"
+                """)
+
+            with st.expander("Available Tools", expanded=False):
                 st.markdown("""
                 1. **Website Generator** 📝
                    - Creates professional website content from resume
@@ -112,14 +123,6 @@ class StreamlitUI:
                 2. **Profile Optimizer** 🔍
                    - LinkedIn profile optimization
                    - GitHub profile enhancement
-                """)
-            
-            with st.expander("Example Prompts", expanded=True):
-                st.markdown("""
-                Try these prompts:
-                - "Create a personal website showcasing my experience as a software engineer with 5 years of experience in Python and JavaScript"
-                - "Optimize my LinkedIn profile: [URL]"
-                - "Help improve my GitHub profile at [URL]"
                 """)
 
             # Action History Panel
@@ -138,7 +141,7 @@ class StreamlitUI:
 
         with col1:
             # Chat interface
-            st.header("Chat Interface")
+            st.header("💬 Chat")
             self.display_chat_history()
             
             # User input
@@ -148,7 +151,7 @@ class StreamlitUI:
                 st.session_state.chat_history.append({"role": "user", "content": user_input})
                 
                 # Process input with loading indicator
-                with st.spinner("Processing your request..."):
+                with st.spinner("Thinking..."):
                     # If resume is uploaded and user wants website content
                     if st.session_state.uploaded_resume:
                         pdf_text = get_pdf_text(st.session_state.uploaded_resume)
