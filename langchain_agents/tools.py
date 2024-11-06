@@ -21,7 +21,7 @@ def parse_resume(resume_content: str, llm: Optional[object] = None) -> str:
     7. Publications (if any)
     8. Languages (if any)
 
-    Output JSON format:
+    Output ONLY in JSON format. Do not include any comments or explanations:
     {
         "name": "string",
         "experience": [
@@ -45,7 +45,7 @@ def parse_resume(resume_content: str, llm: Optional[object] = None) -> str:
     return llm.invoke([
         {"role": "system", "content": parse_prompt},
         {"role": "user", "content": f"Parse this resume:\n\n{resume_content}"}
-    ])
+    ]).replace("```json", "").replace("```", "")
 
 def get_github_profile(url: str, llm: Optional[object] = None) -> str:
     """

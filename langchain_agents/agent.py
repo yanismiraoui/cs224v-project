@@ -54,7 +54,7 @@ Action:
 Begin! Reminder to ALWAYS respond with a valid json blob of a single action. Use tools if necessary. Respond directly if appropriate. Format is Action:```$JSON_BLOB```then Observation
 Make sure to use the tools to respond the full answer, to the user's question but if you are not able to use the tools or do not have enough information, respond directly. 
 Do not call tools if you do not need to, just give the final answer directly.
-If the user asks for a website, make sure to respond with the full website content, not just an answer like "Website generated successfully".
+If the user asks for a website, make sure to respond with the full website content, not just an answer like "Website generated successfully", include the website code correctly formatted in the response.
 """),
 ("placeholder", "{chat_history}"),
 ("human", """{input}

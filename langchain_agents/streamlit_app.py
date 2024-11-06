@@ -4,7 +4,7 @@ from agent import JobApplicationAgent
 import toml
 import os
 from typing import BinaryIO
-from PyPDF2 import PdfReader
+import pymupdf
 
 # Initialize environment variables and configurations
 try:
@@ -17,8 +17,11 @@ except Exception as e:
 
 def get_pdf_text(pdf_file: BinaryIO) -> str:
     """Extract text from a PDF file."""
-    reader = PdfReader(pdf_file)
-    return "\n".join([page.extract_text() for page in reader.pages])
+    pdf = pymupdf.open(stream=pdf_file.read(), filetype="pdf")
+    text = ''
+    for page in pdf.pages():
+        text += page.get_text()
+    return text
 
 class StreamlitUI:
     def __init__(self):
@@ -130,6 +133,7 @@ class StreamlitUI:
             
             if st.button("Clear Chat History", type="secondary"):
                 st.session_state.chat_history = []
+                st.session_state.agent.action_history = []
                 st.rerun()
 
         with col1:
