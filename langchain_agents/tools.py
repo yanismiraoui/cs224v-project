@@ -129,6 +129,7 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
         Remember a colorful and modern design is very important. 
         This should not be a template website, it should be original and unique to you and the user do not need to modify it for it to be fully functional.
         Make sure the website is original and not copy-pasted from other websites. BE CREATIVE.
+        Also, make sure all the data is present in the website, the user should not need to add any additional data by themselves.
         """
         if parsed_resume:
             return llm.invoke([

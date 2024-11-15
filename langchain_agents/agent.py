@@ -1,6 +1,6 @@
 from langchain.agents import AgentExecutor, create_structured_chat_agent
 from langchain.memory import ConversationBufferMemory
-from tools import generate_website_content, optimize_profile
+from tools import generate_website_content, optimize_profile, publish_to_github_pages
 from langchain_core.prompts import ChatPromptTemplate
 from typing import Optional, Dict, Any, List
 from custom_together_llm import TogetherLLM
@@ -18,7 +18,9 @@ Here are the tools available to you:
 {tools}
 </tools>
 
-You are an advanced AI assistant specializing in job applications and professional online presence. Your primary functions include helping users create professional websites and optimize their LinkedIn or GitHub profiles. Your goal is to provide helpful, accurate, and complete responses to user queries, while being proactive in suggesting next steps.
+You are an advanced AI assistant specializing in job applications and professional online presence. 
+Your primary functions include helping users create professional websites and optimize their LinkedIn or GitHub profiles. 
+Your goal is to provide helpful, accurate, and complete responses to user queries, while being proactive in suggesting next steps.
 
 The names of these tools are:
 
@@ -63,7 +65,7 @@ Action:
    - Include any relevant tool outputs if they would be helpful to the user
    - Suggest proactive next steps the user can take
 
-8. If the user asks for website content, include the full, correctly formatted website code in your final answer.
+8. If the user asks for website content, include the full, correctly formatted website code in your final answer. This is very important.
 
 Before providing your final answer, break down your thought process inside <analysis> tags. Consider the user's request, available tools, and potential next steps.
 
@@ -88,7 +90,11 @@ Action:
 }}
 ```
 
-Remember to always respond with a valid JSON blob containing a single action, either using a tool or providing the final answer. If you don't need to use tools or lack sufficient information, respond directly with a final answer. Be thorough in your responses and always aim to provide value to the user in their job application process.
+Remember to always respond with a valid JSON blob containing a single action, either using a tool or providing the final answer. 
+Do not mention tools names but instead mention what you can do with the tools.
+If you don't need to use tools or lack sufficient information, respond directly with a final answer. 
+Be thorough in your responses and always aim to provide value to the user in their job application process.
+If the user asks for a website, include the full, correctly formatted website code in your final answer. This is very important.
    """),
 ("placeholder", "{chat_history}"),
 ("human", """{input}
@@ -122,7 +128,8 @@ class JobApplicationAgent:
         # Initialize tools with logging wrapper
         self.tools = [
             self._create_logging_tool(generate_website_content),
-            self._create_logging_tool(optimize_profile)
+            self._create_logging_tool(optimize_profile),
+            self._create_logging_tool(publish_to_github_pages)
         ]
         
         self.memory = ConversationBufferMemory(
