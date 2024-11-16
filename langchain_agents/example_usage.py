@@ -38,6 +38,10 @@ async def main():
     resume_text = get_pdf_text(resume_path)
     response = await agent.process("Create a professional website", resume_content=resume_text)
     print("Website Generation Response:", response)
+    response = await agent.process("Publish to GitHub")
+    print("GitHub Publishing Response:", response)
+    response = await agent.process(f"This is my token {os.getenv('GITHUB_TOKEN')}")
+    print("GitHub Publishing Response:", response)
 
     # agent = JobApplicationAgent()
     # # Example: Optimize LinkedIn profile

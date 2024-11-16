@@ -32,7 +32,7 @@ Instructions:
 
 1. Carefully analyze the user's input to understand their request or question.
 
-2. If you need clarification, ask the user for more information without using any tools and directly ask the user using the "Final Answer" tool.
+2. If you need clarification or additional information, ask the user for more information without using any tools and directly ask the user using the "Final Answer" tool.
 
 3. If you have enough information to proceed, determine whether you need to use a tool or can provide a direct answer.
 

@@ -124,13 +124,13 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
         
         If the style is:
         - minimal-modern: Focus on typography and whitespace
-        - creative-portfolio: Use bold colors and unusual layouts
-        - tech-focused: Include terminal-like interfaces or code-inspired designs
+        - creative-portfolio: Use bold color and color gradients and unusual layouts
+        - tech-focused: Include terminal-like interfaces or code-inspired designs and fonts
         - artistic-showcase: Incorporate canvas animations and artistic transitions
         - professional-corporate: Elegant animations and clean design
         - playful-interactive: Add game-like elements and playful interactions
 
-        Required sections (but present them creatively):
+        Required sections (but this is not exhaustive):
         - Professional Summary
         - Experience
         - Skills & Expertise
@@ -213,13 +213,12 @@ def optimize_profile(url: str, profile_type: str, resume_content: Optional[str] 
         ])
 
 @tool
-def publish_to_github_pages(github_token: str, repo_name: str, description: str, html_content: Optional[str] = None, css_content: Optional[str] = None, javascript_content: Optional[str] = None, llm: Optional[object] = None) -> str:
+def publish_to_github_pages(github_token: str, description: str, html_content: Optional[str] = None, css_content: Optional[str] = None, javascript_content: Optional[str] = None, llm: Optional[object] = None) -> str:
     """
     Publishes website content to GitHub Pages
 
     Args:
-        github_token: GitHub personal access token
-        repo_name: Name for the repository (e.g., 'me', 'home', 'portfolio')
+        github_token: GitHub personal access token (REQUIRED)
         description: Description for the repository
         html_content: Optional HTML content to publish
         css_content: Optional CSS content to publish
@@ -232,6 +231,7 @@ def publish_to_github_pages(github_token: str, repo_name: str, description: str,
         # Initialize GitHub client
         g = Github(github_token)
         user = g.get_user()
+        repo_name = f"{user.login}.github.io"
         
         # Create or get repository
         try:
@@ -240,8 +240,7 @@ def publish_to_github_pages(github_token: str, repo_name: str, description: str,
             repo = user.create_repo(
                 repo_name,
                 description=description,
-                homepage=f"https://{user.login}.github.io/{repo_name}",
-                has_pages=True
+                homepage=f"https://{user.login}.github.io",
             )
         
         # Create/update index.html
@@ -292,10 +291,7 @@ def publish_to_github_pages(github_token: str, repo_name: str, description: str,
                 javascript_content
             )
         
-        # Enable GitHub Pages if not already enabled
-        repo.enable_pages(source="main", path="/")
-        
-        return f"Website published at: https://{user.login}.github.io/{repo_name}"
+        return f"Website published at: https://{user.login}.github.io"
     
     except Exception as e:
         return f"Error publishing website: {str(e)}"
