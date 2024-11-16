@@ -137,6 +137,7 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
 
         Technical requirements:
         - Ensure responsive design
+        - Make it colorful and creative
         - Include modern CSS features (Grid, Flexbox, CSS Variables)
         - Add meaningful animations and transitions
         - Make it interactive and engaging

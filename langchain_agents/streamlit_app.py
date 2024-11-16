@@ -5,6 +5,9 @@ import toml
 import os
 from typing import BinaryIO
 import pymupdf
+import pandas as pd
+from pathlib import Path
+import uuid
 
 # Initialize environment variables and configurations
 try:
@@ -25,6 +28,10 @@ def get_pdf_text(pdf_file: BinaryIO) -> str:
 
 class StreamlitUI:
     def __init__(self):
+        # Add user session tracking
+        if 'user_id' not in st.session_state:
+            st.session_state.user_id = self.generate_user_id()
+        
         # Initialize session state
         if 'agent' not in st.session_state:
             st.session_state.agent = asyncio.run(self.initialize_agent())
@@ -32,6 +39,18 @@ class StreamlitUI:
             st.session_state.chat_history = []
         if 'uploaded_resume' not in st.session_state:
             st.session_state.uploaded_resume = None
+        self.feedback_dir = Path('feedback')
+        self.feedback_dir.mkdir(exist_ok=True)
+        self.feedback_file = self.feedback_dir / 'agent_feedback.csv'
+        if not self.feedback_file.exists():
+            pd.DataFrame(columns=[
+                'timestamp', 'user_id', 'chat_history', 'user_input', 'agent_response', 
+                'rating', 'feedback_text'
+            ]).to_csv(self.feedback_file, index=False)
+        
+        # Add a new session state variable to track submitted feedback
+        if 'submitted_feedbacks' not in st.session_state:
+            st.session_state.submitted_feedbacks = set()
     
     @staticmethod
     async def initialize_agent() -> JobApplicationAgent:
@@ -39,10 +58,60 @@ class StreamlitUI:
         return JobApplicationAgent()
             
     def render_chat_message(self, role: str, content: str):
-        """Render a chat message with the appropriate styling."""
+        """Render a chat message with feedback for assistant messages."""
         with st.chat_message(role):
             st.markdown(content)
             
+            if role == "assistant":
+                # Use message content as part of the key to ensure uniqueness
+                message_hash = hash(content)
+                
+                # Check if feedback was already submitted for this message
+                if message_hash not in st.session_state.submitted_feedbacks:
+                    feedback_key = f"feedback_{message_hash}"
+                    
+                    # Only show feedback options if not yet submitted
+                    feedback = st.feedback(
+                        options="faces",
+                        key=feedback_key
+                    )
+                    feedback_text = st.text_area(
+                        "Additional comments (optional):",
+                        key=f"{feedback_key}_text"
+                    )
+                    
+                    if st.button("Send", key=f"{feedback_key}_save"):
+                        if feedback is None:
+                            st.error("Please provide a rating before submitting! 🙏")
+                        elif not feedback_text.strip():
+                            st.error("Please provide some feedback text before submitting! 💬")
+                        else:
+                            # Format entire chat history
+                            chat_history_text = "\n\n".join([
+                                f"{msg['role'].upper()}: {msg['content']}" 
+                                for msg in st.session_state.chat_history
+                            ])
+                            
+                            # Save feedback with user information
+                            feedback_data = pd.DataFrame([{
+                                'timestamp': pd.Timestamp.now(),
+                                'user_id': st.session_state.user_id,
+                                'chat_history': chat_history_text,
+                                'user_input': st.session_state.chat_history[-2]['content'],
+                                'agent_response': content,
+                                'rating': feedback,
+                                'feedback_text': feedback_text
+                            }])
+                            feedback_data.to_csv(self.feedback_file, mode='a', header=False, index=False)
+                            st.session_state.submitted_feedbacks.add(message_hash)
+                            if 'show_toast' not in st.session_state:
+                                st.session_state.show_toast = True
+                            st.rerun()
+            
+        if hasattr(st.session_state, 'show_toast'):
+            st.toast("Thank you for your feedback! 🤗", icon="✨")
+            del st.session_state.show_toast
+    
     def display_chat_history(self):
         """Display the chat history."""
         for message in st.session_state.chat_history:
@@ -165,6 +234,11 @@ class StreamlitUI:
                 
                 # Rerun to update the UI
                 st.rerun()
+
+    @staticmethod
+    def generate_user_id() -> str:
+        """Generate a unique user ID for the session."""
+        return str(uuid.uuid4())
 
 if __name__ == "__main__":
     app = StreamlitUI()

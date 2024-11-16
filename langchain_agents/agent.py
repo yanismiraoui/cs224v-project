@@ -151,6 +151,10 @@ class JobApplicationAgent:
             handle_parsing_errors=True,
             max_iterations=5,
         )
+
+        # Remove all files in temp folder for a fresh start
+        for file in Path("temp").glob("*"):
+            file.unlink()
     
     def _create_logging_tool(self, tool):
         """Wrap a tool with logging functionality."""
