@@ -8,11 +8,14 @@ import pymupdf
 import pandas as pd
 from pathlib import Path
 import uuid
+import psycopg2
+from datetime import datetime
 
 # Initialize environment variables and configurations
 try:
-    secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'secrets.toml')
-    secrets = toml.load(secrets_path)
+    # save in secrets.toml in the root directory (not .streamlit)
+    secrets_path = Path(__file__).parent.parent / "secrets.toml"
+    secrets = toml.load(str(secrets_path))
     os.environ['TOGETHER_API_KEY'] = secrets['TOGETHER_API_KEY']
 except Exception as e:
     st.error(f"Error loading secrets: {str(e)}")
@@ -39,14 +42,12 @@ class StreamlitUI:
             st.session_state.chat_history = []
         if 'uploaded_resume' not in st.session_state:
             st.session_state.uploaded_resume = None
-        self.feedback_dir = Path('feedback')
-        self.feedback_dir.mkdir(exist_ok=True)
-        self.feedback_file = self.feedback_dir / 'agent_feedback.csv'
-        if not self.feedback_file.exists():
-            pd.DataFrame(columns=[
-                'timestamp', 'user_id', 'chat_history', 'user_input', 'agent_response', 
-                'rating', 'feedback_text'
-            ]).to_csv(self.feedback_file, index=False)
+        
+        # Use the connection string directly instead of separate parameters
+        self.db_url = secrets['POSTGRES_DB']
+        
+        # Initialize database table if it doesn't exist
+        self.initialize_database()
         
         # Add a new session state variable to track submitted feedback
         if 'submitted_feedbacks' not in st.session_state:
@@ -57,20 +58,60 @@ class StreamlitUI:
         """Initialize the agent asynchronously."""
         return JobApplicationAgent()
             
+    def initialize_database(self):
+        """Initialize the PostgreSQL database and create table if it doesn't exist."""
+        try:
+            with psycopg2.connect(self.db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS agent_feedback (
+                            id SERIAL PRIMARY KEY,
+                            timestamp TIMESTAMP,
+                            user_id TEXT,
+                            chat_history TEXT,
+                            user_input TEXT,
+                            agent_response TEXT,
+                            rating TEXT,
+                            feedback_text TEXT
+                        )
+                    """)
+                conn.commit()
+        except Exception as e:
+            st.error(f"Database initialization error: {str(e)}")
+
+    def save_feedback(self, feedback_data: dict):
+        """Save feedback to PostgreSQL database."""
+        try:
+            with psycopg2.connect(self.db_url) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO agent_feedback 
+                        (timestamp, user_id, chat_history, user_input, agent_response, rating, feedback_text)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        datetime.now(),
+                        feedback_data['user_id'],
+                        feedback_data['chat_history'],
+                        feedback_data['user_input'],
+                        feedback_data['agent_response'],
+                        feedback_data['rating'],
+                        feedback_data['feedback_text']
+                    ))
+                conn.commit()
+        except Exception as e:
+            st.error(f"Error saving feedback: {str(e)}")
+
     def render_chat_message(self, role: str, content: str):
         """Render a chat message with feedback for assistant messages."""
         with st.chat_message(role):
             st.markdown(content)
             
             if role == "assistant":
-                # Use message content as part of the key to ensure uniqueness
                 message_hash = hash(content)
                 
-                # Check if feedback was already submitted for this message
                 if message_hash not in st.session_state.submitted_feedbacks:
                     feedback_key = f"feedback_{message_hash}"
                     
-                    # Only show feedback options if not yet submitted
                     feedback = st.feedback(
                         options="faces",
                         key=feedback_key
@@ -102,7 +143,7 @@ class StreamlitUI:
                                 'rating': feedback,
                                 'feedback_text': feedback_text
                             }])
-                            feedback_data.to_csv(self.feedback_file, mode='a', header=False, index=False)
+                            self.save_feedback(feedback_data.iloc[0].to_dict())
                             st.session_state.submitted_feedbacks.add(message_hash)
                             if 'show_toast' not in st.session_state:
                                 st.session_state.show_toast = True
