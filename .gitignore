@@ -31,6 +31,7 @@ cs224v/
 
 # Streamlit secrets
 .streamlit/secrets.toml
+.replit
 
 # IDE specific files
 .idea/
