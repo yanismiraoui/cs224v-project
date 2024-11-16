@@ -4,6 +4,11 @@ import toml
 import os
 import PyPDF2
 
+# GitHub token in secrets.toml
+secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'secrets.toml')
+secrets = toml.load(secrets_path)
+os.environ['GITHUB_TOKEN'] = secrets['GITHUB_TOKEN']
+
 async def main():
     # Initialize agent with API key from secrets
     agent = JobApplicationAgent()

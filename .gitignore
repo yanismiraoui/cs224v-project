@@ -57,3 +57,6 @@ config.local.yaml
 # Logs
 *.log
 logs/
+
+# Everything in temp folder
+temp/*

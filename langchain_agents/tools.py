@@ -146,15 +146,31 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
         """
         llm = TogetherLLM(temperature=0.7)
         if parsed_resume:
-            return llm.invoke([
+            response = llm.invoke([
                 {"role": "system", "content": content_prompt},
                 {"role": "user", "content": f"Generate content using this resume data and these very important additional instructions: {query}\n\nResume data:\n{parsed_resume}"}
             ]).replace('"', "'")
+            # Save response HTML, CSS and JS to files in temp folder
+            with open(f"temp/index.html", "w") as file:
+                file.write(response.split("```html")[1].split("```")[0])
+            with open(f"temp/style.css", "w") as file:
+                file.write(response.split("```css")[1].split("```")[0])
+            with open(f"temp/script.js", "w") as file:
+                file.write(response.split("```javascript")[1].split("```")[0])
+            return response
         elif query:
-            return llm.invoke([
+            response = llm.invoke([
                 {"role": "system", "content": content_prompt},
                 {"role": "user", "content": f"Generate content using these very important additional instructions: {query}"}
-            ])
+            ]).replace('"', "'")
+            # Save response HTML, CSS and JS to files in temp folder
+            with open(f"temp/index.html", "w") as file:
+                file.write(response.split("```html")[1].split("```")[0])
+            with open(f"temp/style.css", "w") as file:
+                file.write(response.split("```css")[1].split("```")[0])
+            with open(f"temp/script.js", "w") as file:
+                file.write(response.split("```javascript")[1].split("```")[0])
+            return response
         else:
             return """Please provide at least the following information to generate website content:
             1. Your full name
@@ -213,21 +229,26 @@ def optimize_profile(url: str, profile_type: str, resume_content: Optional[str] 
         ])
 
 @tool
-def publish_to_github_pages(github_token: str, description: str, html_content: Optional[str] = None, css_content: Optional[str] = None, javascript_content: Optional[str] = None, llm: Optional[object] = None) -> str:
+def publish_to_github_pages(github_token: str, description: str, llm: Optional[object] = None) -> str:
     """
     Publishes website content to GitHub Pages
 
     Args:
         github_token: GitHub personal access token (REQUIRED)
         description: Description for the repository
-        html_content: Optional HTML content to publish
-        css_content: Optional CSS content to publish
-        javascript_content: Optional JavaScript content to publish
         llm: Optional LLM instance to use (will create new one if not provided)
     """
     llm = llm or TogetherLLM(temperature=0.1)
     
     try:
+        # Load HTML, CSS and JS from temp folder
+        with open(f"temp/index.html", "r") as file:
+            html_content = file.read()
+        with open(f"temp/style.css", "r") as file:
+            css_content = file.read()
+        with open(f"temp/script.js", "r") as file:
+            javascript_content = file.read()
+        
         # Initialize GitHub client
         g = Github(github_token)
         user = g.get_user()
