@@ -48,20 +48,5 @@ async def main():
     response = await agent.process(f"This is my token {os.getenv('GITHUB_TOKEN')}")
     print("GitHub Publishing Response:", response)
 
-    # agent = JobApplicationAgent()
-    # # Example: Optimize LinkedIn profile
-    # linkedin_query = """
-    # Please optimize my LinkedIn profile:
-    # {
-    #     "headline": "Software Engineer",
-    #     "about": "5 years of experience in web development",
-    #     "experience": ["Full Stack Developer at Tech Corp"],
-    #     "skills": ["React", "Node.js", "Python"]
-    # }
-    # """
-    
-    # response = await agent.process(linkedin_query)
-    # print("LinkedIn Optimization Response:", response)
-
 if __name__ == "__main__":
     asyncio.run(main())

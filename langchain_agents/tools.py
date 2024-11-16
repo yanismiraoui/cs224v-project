@@ -69,7 +69,7 @@ class WebsiteContentInput(BaseModel):
 
 class ProfileOptimizerInput(BaseModel): 
     url: str = Field(description="The profile URL to optimize")
-    profile_type: str = Field(description="The type of profile (linkedin/github)")
+    profile_type: str = Field(description="The type of profile (GitHub)")
     resume_content: Optional[str] = Field(None, description="Optional resume text content")
     llm: Optional[object] = Field(None, description="Optional LLM instance to use")
 
@@ -186,25 +186,21 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
 
 @tool(args_schema=ProfileOptimizerInput)
 def optimize_profile(url: str, profile_type: str, resume_content: Optional[str] = None, llm: Optional[object] = None) -> str:
-    """Optimize professional profiles (LinkedIn/GitHub).
+    """Optimize professional profiles (GitHub).
     
     Args:
         url: The profile URL to optimize
-        profile_type: The type of profile (linkedin/github)
+        profile_type: The type of profile (GitHub)
         resume_content: Optional string containing resume text content
         llm: Optional LLM instance to use (will create new one if not provided)
 
     Returns:
         str: Optimized profile content
     """
-    if profile_type.lower() not in ['linkedin', 'github']:
-        return "Error: Profile type must be either 'LinkedIn' or 'GitHub'"
+    if profile_type.lower() not in ['github']:
+        return "Error: Profile type must be 'GitHub'"
     
-    content = None
-    if profile_type.lower() == 'linkedin':
-        content = ""
-    elif profile_type.lower() == 'github':
-        content = get_github_profile(url, llm)
+    content = get_github_profile(url, llm)
         
     parsed_resume = None
     if isinstance(resume_content, str):

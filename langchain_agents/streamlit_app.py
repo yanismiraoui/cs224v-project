@@ -10,6 +10,7 @@ from pathlib import Path
 import uuid
 import psycopg2
 from datetime import datetime
+from streamlit_option_menu import option_menu
 
 # Initialize environment variables and configurations
 try:
@@ -40,6 +41,21 @@ class StreamlitUI:
             st.session_state.agent = asyncio.run(self.initialize_agent())
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
+            # Add welcome message to chat history
+            welcome_message = """👋 Welcome to RecruiTree 🌲! I'm here to help you create unique professional presence to get RecruiTree'd .
+
+To get started:
+1. Upload your resume (PDF) using the panel on the right
+2. Try asking me to:
+   - Create a personal website/portfolio 🌐
+   - Improve your GitHub profile 🔍
+   - Create a cool and fancy GitHub README 📝
+
+How can I help you?"""
+            st.session_state.chat_history.append({"role": "assistant", "content": welcome_message})
+            # Force a rerun to display the welcome message
+            st.rerun()
+        
         if 'uploaded_resume' not in st.session_state:
             st.session_state.uploaded_resume = None
         
@@ -106,7 +122,8 @@ class StreamlitUI:
         with st.chat_message(role):
             st.markdown(content)
             
-            if role == "assistant":
+            # Only show feedback if it's an assistant message AND not the welcome message
+            if role == "assistant" and content != st.session_state.chat_history[0]["content"]:
                 message_hash = hash(content)
                 
                 if message_hash not in st.session_state.submitted_feedbacks:
@@ -195,86 +212,111 @@ class StreamlitUI:
         st.set_page_config(
             page_title="RecruiTree",
             page_icon="🌲",
-            layout="wide"
+            layout="wide",
         )
         
-        # Main layout
-        st.title("🌲 RecruiTree")
+        # Add CSS to hide the sidebar
+        st.markdown("""
+            <style>
+                [data-testid="stSidebar"] {
+                    display: none;
+                }
+            </style>
+        """, unsafe_allow_html=True)
         
-        # Two-column layout
-        col1, col2 = st.columns([2, 1])
+        # Add navigation menu
+        selected = option_menu(
+            menu_title=None,
+            options=["Chat", "Feedback Analytics"],
+            icons=["chat-dots", "graph-up"],
+            menu_icon="cast",
+            default_index=0,
+            orientation="horizontal",
+        )
         
-        with col2:
-            st.header("Tools & Examples")
+        if selected == "Chat":
+            # Two-column layout
+            col1, col2 = st.columns([2, 1])
             
-            # Add file uploader in the tools section with limit of 1 file and 2MB size
-            uploaded_file = st.file_uploader("Upload your resume (PDF)", type=['pdf'], accept_multiple_files=False)
-            if uploaded_file:
-                if uploaded_file.size > 2*1024*1024:
-                    st.error("File size limit is 2MB")
-                else:
-                    st.session_state.uploaded_resume = uploaded_file
-                    st.success("Resume uploaded successfully!")
+            with col1:
+                st.title("🌲 RecruiTree")
             
-            with st.expander("Example Prompts", expanded=True):
-                st.markdown("""
-                Try these prompts:
-                - "Create a personal website showcasing my experience as a software engineer with 5 years of experience in Python and JavaScript"
-                - "Optimize my LinkedIn profile: [URL]"
-                - "Help improve my GitHub profile at [URL]"
-                """)
-
-            with st.expander("Available Tools", expanded=False):
-                st.markdown("""
-                1. **Website Generator** 📝
-                   - Creates professional website content from resume
-                   - Upload your PDF resume to get started
+            with col2:
+                st.header("Tools & Examples")
                 
-                2. **Profile Optimizer** 🔍
-                   - LinkedIn profile optimization
-                   - GitHub profile enhancement
-                """)
-
-            # Action History Panel
-            with st.expander("📋 Action History", expanded=False):
-                action_history = self.format_action_history()
-                if action_history == "No actions recorded yet":
-                    st.markdown("*No actions recorded yet* ⏱️")
-                elif isinstance(action_history, list):
-                    for entry in action_history:
-                        st.markdown(f"```\n{entry}\n```")   
-            
-            if st.button("Clear Chat History", type="secondary"):
-                st.session_state.chat_history = []
-                st.session_state.agent.action_history = []
-                st.rerun()
-
-        with col1:
-            # Chat interface
-            st.header("💬 Chat")
-            self.display_chat_history()
-            
-            # User input
-            if user_input := st.chat_input("Type your message here...", key="user_input"):
-                # Add user message to chat
-                self.render_chat_message("user", user_input)
-                st.session_state.chat_history.append({"role": "user", "content": user_input})
-                
-                # Process input with loading indicator
-                with st.spinner("Thinking..."):
-                    # If resume is uploaded and user wants website content
-                    if st.session_state.uploaded_resume:
-                        pdf_text = get_pdf_text(st.session_state.uploaded_resume)
-                        response = asyncio.run(self.process_input(user_input, pdf_text))
+                # Add file uploader in the tools section with limit of 1 file and 2MB size
+                uploaded_file = st.file_uploader("Upload your resume (PDF)", type=['pdf'], accept_multiple_files=False)
+                if uploaded_file:
+                    if uploaded_file.size > 2*1024*1024:
+                        st.error("File size limit is 2MB")
                     else:
-                        response = asyncio.run(self.process_input(user_input))
+                        st.session_state.uploaded_resume = uploaded_file
+                        st.success("Resume uploaded successfully!")
                 
-                # Add assistant response to chat
-                self.render_chat_message("assistant", response)
-                st.session_state.chat_history.append({"role": "assistant", "content": response})
+                with st.expander("Example Prompts", expanded=True):
+                    st.markdown("""
+                    Try these prompts after uploading your resume:
+                    - "Create a nice personal website"
+                    - "Help me improve my GitHub profile"
+                    - "Create a nice Github README for my profile"
+                    """)
+
+                with st.expander("Available Tools", expanded=False):
+                    st.markdown("""
+                    1. **Website Generator** 📝
+                        - Upload your PDF resume to get started 
+                        - Creates professional website content from resume
+                        - Tailor the website to your needs
+                    
+                    2. **Profile Optimizer** 🔍
+                        - Create a GitHub README
+                        - Optimize your GitHub profile
+                    """)
+
+                # Action History Panel
+                with st.expander("📋 Action History", expanded=False):
+                    action_history = self.format_action_history()
+                    if action_history == "No actions recorded yet":
+                        st.markdown("*No actions recorded yet* ⏱️")
+                    elif isinstance(action_history, list):
+                        for entry in action_history:
+                            st.markdown(f"```\n{entry}\n```")   
                 
-                # Rerun to update the UI
-                st.rerun()
+                if st.button("Clear Chat History", type="secondary"):
+                    st.session_state.chat_history = []
+                    st.session_state.agent.action_history = []
+                    st.rerun()
+
+            with col1:
+                # Chat interface
+                self.display_chat_history()
+                
+                # User input
+                if user_input := st.chat_input("Type your message here...", key="user_input"):
+                    # Add user message to chat
+                    self.render_chat_message("user", user_input)
+                    st.session_state.chat_history.append({"role": "user", "content": user_input})
+                    
+                    # Process input with loading indicator
+                    with st.spinner("Thinking..."):
+                        # If resume is uploaded and user wants website content
+                        if st.session_state.uploaded_resume:
+                            pdf_text = get_pdf_text(st.session_state.uploaded_resume)
+                            response = asyncio.run(self.process_input(user_input, pdf_text))
+                        else:
+                            response = asyncio.run(self.process_input(user_input))
+                    
+                    # Add assistant response to chat
+                    self.render_chat_message("assistant", response)
+                    st.session_state.chat_history.append({"role": "assistant", "content": response})
+                    
+                    # Rerun to update the UI
+                    st.rerun()
+
+        elif selected == "Feedback Analytics":
+            # Import and run the feedback analytics page
+            from pages.feedback_analytics import main as feedback_main
+            feedback_main()
 
     @staticmethod
     def generate_user_id() -> str:
