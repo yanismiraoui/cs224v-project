@@ -152,13 +152,13 @@ class StreamlitUI:
     def run(self):
         """Run the Streamlit application."""
         st.set_page_config(
-            page_title="Job Application Assistant",
-            page_icon="💼",
+            page_title="RecruiTree",
+            page_icon="🌲",
             layout="wide"
         )
         
         # Main layout
-        st.title("💼 Job Application Assistant")
+        st.title("🌲 RecruiTree")
         
         # Two-column layout
         col1, col2 = st.columns([2, 1])
