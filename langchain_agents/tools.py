@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 import requests
 import json
 from bs4 import BeautifulSoup
+import random
 
 def parse_resume(resume_content: str, llm: Optional[object] = None) -> str:
     """
@@ -99,43 +100,56 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
 
     # Generate website content
     try:
-        content_prompt = """Create a professional website content in JavaScript, HTML and CSS using the provided resume data. 
-        Take your time and make sure to include all the information you have. You can create as many pages as you want.
-        Make sure to have a very nice design and layout that is easy to read and is visually appealing.
-        Include as many as possible nice animations and transitions if you can but make sure they show up on all devices properly.
-        Make sure to include these sections but also add any additional information you think is relevant:
+        # Randomly select a website style/theme
+        website_styles = [
+            "minimal-modern",
+            "creative-portfolio",
+            "tech-focused",
+            "artistic-showcase",
+            "professional-corporate",
+            "playful-interactive"
+        ]
+        
+        selected_style = random.choice(website_styles)
+        print(f"Selected style: {selected_style}")
+        
+        content_prompt = f"""Create a unique and creative {selected_style} website using JavaScript, HTML and CSS. 
+        Focus on making this website stand out with:
 
-        # Professional Summary
-        Write a compelling first-person introduction highlighting key strengths and career focus.
+        - Unique layout arrangements (avoid traditional top-to-bottom layouts)
+        - Creative navigation patterns
+        - Interactive elements that engage visitors
+        - Modern design elements like glassmorphism, neumorphism, or creative gradients
+        - Innovative ways to present traditional content sections
+        
+        If the style is:
+        - minimal-modern: Focus on typography and whitespace
+        - creative-portfolio: Use bold colors and unusual layouts
+        - tech-focused: Include terminal-like interfaces or code-inspired designs
+        - artistic-showcase: Incorporate canvas animations and artistic transitions
+        - professional-corporate: Elegant animations and clean design
+        - playful-interactive: Add game-like elements and playful interactions
 
-        # Experience
-        For each role, include:
-        - Position and company
-        - Dates
-        - 3-4 quantified achievements or key responsibilities
+        Required sections (but present them creatively):
+        - Professional Summary
+        - Experience
+        - Skills & Expertise
 
-        # Skills & Expertise
-        Group skills by category (e.g., Technical, Leadership, Industry Knowledge)
-
-        Style guidelines:
-        - Use first-person perspective
-        - Focus on measurable achievements
-        - Keep tone professional but engaging
-        - Include specific numbers and metrics where available
-        - Make it look colorful and up to date
-        - Make sure the title is the name of the person
-        - Make sure the website does not have any layout issues
-
-        Remember a colorful and modern design is very important. 
-        This should not be a template website, it should be original and unique to you and the user do not need to modify it for it to be fully functional.
-        Make sure the website is original and not copy-pasted from other websites. BE CREATIVE.
-        Also, make sure all the data is present in the website, the user should not need to add any additional data by themselves.
+        Technical requirements:
+        - Ensure responsive design
+        - Include modern CSS features (Grid, Flexbox, CSS Variables)
+        - Add meaningful animations and transitions
+        - Make it interactive and engaging
+        - Ensure accessibility
+        
+        The website should be complete and ready to use without modifications.
         """
+        llm = TogetherLLM(temperature=0.7)
         if parsed_resume:
             return llm.invoke([
                 {"role": "system", "content": content_prompt},
                 {"role": "user", "content": f"Generate content using this resume data and these very important additional instructions: {query}\n\nResume data:\n{parsed_resume}"}
-            ])
+            ]).replace('"', "'")
         elif query:
             return llm.invoke([
                 {"role": "system", "content": content_prompt},
