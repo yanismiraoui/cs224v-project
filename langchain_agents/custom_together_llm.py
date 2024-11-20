@@ -40,7 +40,8 @@ class TogetherLLM(LLM):
                 {"role": "system", "content": prompt}
             ],
             stream=False,
-            temperature=self.temperature,
+            response_format={"type": "json_object"},
+            temperature=self.temperature
         )
         output = response.choices[0].message.content
         return output

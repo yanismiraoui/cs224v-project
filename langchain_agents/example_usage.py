@@ -9,9 +9,11 @@ secrets_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'secrets
 secrets = toml.load(secrets_path)
 os.environ['GITHUB_TOKEN'] = secrets['GITHUB_TOKEN']
 
+
+
 async def main():
     # Initialize agent with API key from secrets
-    agent = JobApplicationAgent()
+    # agent = JobApplicationAgent()
     
     # Example: Generate website content
     # website_query = """

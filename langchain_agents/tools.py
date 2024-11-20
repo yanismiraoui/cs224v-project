@@ -73,6 +73,13 @@ class ProfileOptimizerInput(BaseModel):
     resume_content: Optional[str] = Field(None, description="Optional resume text content")
     llm: Optional[object] = Field(None, description="Optional LLM instance to use")
 
+class HomeScreenInput(BaseModel):
+    resume_content: Optional[str] = Field(None, description="Optional resume text content")
+    style: Optional[str] = Field(None, description="Optional style preference")
+    color_scheme: Optional[str] = Field(None, description="Optional color scheme preference")
+    profile_image_url: Optional[str] = Field(None, description="URL of the profile image")
+    llm: Optional[object] = Field(None, description="Optional LLM instance to use")
+
 @tool(args_schema=WebsiteContentInput)
 def generate_website_content(query: Optional[str] = None, resume_content: Optional[str] = None, llm: Optional[TogetherLLM] = None) -> str:
     """
@@ -224,6 +231,121 @@ def optimize_profile(url: str, profile_type: str, resume_content: Optional[str] 
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Optimize this {profile_type} profile: {content}"}
         ])
+
+# @tool(args_schema=HomeScreenInput)
+# def generate_home_screen(
+#     resume_content: Optional[str] = None, 
+#     style: Optional[str] = None, 
+#     color_scheme: Optional[str] = None,
+#     profile_image_url: Optional[str] = None,
+#     llm: Optional[TogetherLLM] = None
+# ) -> str:
+#     """Generate a minimal home screen with optional profile picture."""
+    
+#     llm = llm or TogetherLLM(temperature=0.7)
+    
+#     # Parse resume to extract only needed information
+#     if isinstance(resume_content, str):
+#         parsed_resume = parse_resume(resume_content, llm)
+#         resume_data = json.loads(parsed_resume)
+#         if resume_data.get("ERROR") == "NOT ENOUGH INFORMATION":
+#             return "Not enough information. Please provide: name, current role/education, and a brief introduction."
+    
+#     styles = {
+#         "modern-gradient": "Clean lines with gradient backgrounds and smooth transitions",
+#         "minimal-elegant": "Simple, typography-focused with plenty of whitespace",
+#         "artistic-abstract": "Creative, unique layouts with artistic elements",
+#     }
+    
+#     color_schemes = {
+#         "vibrant-purple-blue": "background: linear-gradient(45deg, #6366f1, #2563eb)",
+#         "sunset-orange-pink": "background: linear-gradient(45deg, #f59e0b, #ec4899)",
+#         "midnight-dark": "background: linear-gradient(45deg, #1e293b, #0f172a)",
+#     }
+    
+#     selected_style = style if style in styles else random.choice(list(styles.keys()))
+#     selected_colors = color_scheme if color_scheme in color_schemes else random.choice(list(color_schemes.keys()))
+    
+#     # Add profile image handling to the prompt
+#     profile_image_css = """
+#     .profile-image {
+#         width: 200px;
+#         height: 200px;
+#         border-radius: 50%;
+#         object-fit: cover;
+#         margin-bottom: 2rem;
+#         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+#         border: 4px solid rgba(255, 255, 255, 0.2);
+#         animation: fadeIn 1s ease-out;
+#     }
+#     """
+    
+#     home_screen_prompt = f"""Create a minimal, impactful home screen using HTML, CSS, and JavaScript.
+    
+#     Style Theme: {selected_style}
+#     Color Scheme: {selected_colors}
+    
+#     IMPORTANT - Include these elements in order:
+#     1. Profile Picture (circular, centered, with subtle border and shadow)
+#     2. Full Name (large, prominent typography)
+#     3. Current Role or Education
+#     4. A brief, 1-2 sentence introduction
+    
+#     Use this profile image URL if provided: {profile_image_url if profile_image_url else "No image provided"}
+    
+#     If no image URL is provided, add a placeholder with initials.
+    
+#     DO NOT include:
+#     - Work history
+#     - Skills
+#     - Projects
+#     - Contact information
+#     - Navigation menus
+#     - Social media links
+    
+#     Design Requirements:
+#     1. Single-page, full-screen layout
+#     2. Large, creative typography for the name
+#     3. Smooth entrance animations
+#     4. Subtle hover effects
+#     5. Clean, minimal design
+#     6. Responsive layout
+    
+#     Technical Requirements:
+#     - Modern CSS (Grid/Flexbox)
+#     - Simple animations for text entrance
+#     - Clean, minimal JavaScript
+#     - Well-commented code
+    
+#     The final design should be striking yet minimal, focusing attention on these three key elements.
+#     Return complete, ready-to-use HTML, CSS, and JavaScript code.
+#     """
+    
+#     try:
+#         if parsed_resume:
+#             # Extract only needed information
+#             name = resume_data.get("name", "")
+#             current_role = ""
+#             if "experience" in resume_data and resume_data["experience"]:
+#                 current_role = f"{resume_data['experience'][0]['position']} at {resume_data['experience'][0]['company']}"
+#             elif "education" in resume_data and resume_data["education"]:
+#                 current_role = f"Student at {resume_data['education'][0]['school']}"
+            
+#             return llm.invoke([
+#                 {"role": "system", "content": home_screen_prompt},
+#                 {"role": "user", "content": f"""Generate a minimal home screen with:
+#                 Name: {name}
+#                 Current Role: {current_role}
+#                 Create a brief, compelling introduction based on the experience."""}
+#             ]).replace('"', "'")
+#         else:
+#             return llm.invoke([
+#                 {"role": "system", "content": home_screen_prompt},
+#                 {"role": "user", "content": "Generate a template home screen with placeholder content for name, role, and brief intro."}
+#             ]).replace('"', "'")
+            
+#     except Exception as e:
+#         return f"Error generating home screen: {str(e)}"
 
 @tool
 def publish_to_github_pages(github_token: str, description: str, llm: Optional[object] = None) -> str:
