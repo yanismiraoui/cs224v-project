@@ -52,110 +52,29 @@ class HomeScreenGeneratorAgent:
             print(f"Generation error: {str(e)}")
             raise
 
-    async def _generate_initial_design(self, user_input: str) -> Dict[str, str]:
-        """Generate and verify website code for professional quality."""
+    async def _generate_initial_design(self, user_input: str) -> str:
+        """Generate website code using separate calls for HTML, CSS, and JS."""
         try:
-            # First generate all files
+            # Generate HTML first
             html_code = await self._generate_html()
-            print(html_code)
+            
+            # Generate CSS based on HTML
             css_code = await self._generate_css(html_code)
-            print(css_code)
+            
+            # Generate JS based on HTML and CSS
             js_code = await self._generate_js(html_code, css_code)
-            print(js_code)
 
-            # Verification prompt without f-string for the JSON part
-            verification_prompt = f"""Review and verify this website code for professional quality:
+            # Format the response with labels outside code blocks
+            formatted_response = f"""HTML Code:
+{html_code.strip()}
 
-HTML:
-{html_code}
+CSS Code:
+{css_code.strip()}
 
-CSS:
-{css_code}
+JavaScript Code:
+{js_code.strip()}"""
 
-JavaScript:
-{js_code}
-
-Verify these critical aspects:
-1. Visual Professional Quality:
-   - Is text clearly visible against the background?
-   - Are sections properly spaced?
-   - Is the layout clean and professional?
-   - Are animations smooth and subtle?
-   - Is the navigation clear and usable?
-
-2. Technical Requirements:
-   - Do all files work together without conflicts?
-   - Are elements properly styled?
-   - Do animations target existing elements?
-   - Is the particles effect visible?
-   - Is error handling complete?
-
-3. Content Clarity:
-   - Is all text readable?
-   - Are links clearly clickable?
-   - Is content properly aligned?
-   - Is spacing professional?
-   - Are sections well-organized?
-
-If you find any issues, return a JSON response in this exact format:
-
-{{
-    "status": "needs_improvement",
-    "issues": [
-        {{
-            "file": "css",
-            "problem": "Text color too dark for background",
-            "fix": "Update text color to #ffffff"
-        }}
-    ]
-}}
-
-Or if everything is good:
-
-{{
-    "status": "approved"
-}}
-
-Review the code carefully and provide specific, actionable fixes if needed."""
-
-            verification = await self.llm.ainvoke([
-                {
-                    "role": "system",
-                    "content": """You are a senior web developer who ensures websites meet professional standards.
-Verify code quality and provide specific fixes if needed.
-Return ONLY the JSON response in the specified format."""
-                },
-                {"role": "user", "content": verification_prompt}
-            ])
-
-            # Parse verification response
-            ver_content = verification if isinstance(verification, str) else verification.get('content', '')
-            try:
-                import json
-                result = json.loads(ver_content)
-                
-                if result.get('status') == 'needs_improvement':
-                    # Apply fixes
-                    for issue in result.get('issues', []):
-                        print(issue)
-                        if issue['file'] == 'html':
-                            html_code = self._apply_fix(html_code, issue['fix'])
-                        elif issue['file'] == 'css':
-                            css_code = self._apply_fix(css_code, issue['fix'])
-                        elif issue['file'] == 'js':
-                            js_code = self._apply_fix(js_code, issue['fix'])
-                    
-                    print("Applied improvements to website code")
-                    print("Fixes:", result.get('issues'))
-            except json.JSONDecodeError as e:
-                print("Verification response not in expected format:", e)
-                print("Raw response:", ver_content)
-
-            return {
-                'html': html_code.strip(),
-                'css': css_code.strip(),
-                'js': js_code.strip()
-            }
+            return formatted_response
 
         except Exception as e:
             print(f"Design generation error: {str(e)}")
@@ -312,41 +231,17 @@ Return ONLY JavaScript code that works with this specific HTML and CSS."""
 
         return response if isinstance(response, str) else response.get('content', '')
 
-    async def _update_design(self, feedback: str) -> Dict[str, str]:
+    async def _update_design(self, feedback: str) -> str:
         """Update existing design based on user feedback."""
         update_prompt = f"""Update the existing website design based on this feedback:
 
 User Feedback: "{feedback}"
 
 Current Design:
-HTML:
-{self.current_design['html']}
-
-CSS:
-{self.current_design['css']}
-
-JavaScript:
-{self.current_design['js']}
-
-Return ALL three code blocks in this EXACT format, including any unchanged code:
-
-HTML Code:
-```html
-[Complete HTML code]
-```
-
-CSS Code:
-```css
-[Complete CSS code]
-```
-
-JavaScript Code:
-```javascript
-[Complete JavaScript code]
-```
+{self.current_design}
 
 Make the requested changes while maintaining all existing features and structure.
-Be sure to include ALL code, not just the changes."""
+Return the complete updated code in three separate blocks."""
 
         try:
             response = await self.llm.ainvoke([
@@ -369,10 +264,14 @@ Never return partial updates - include all existing code with your changes."""
             # Ensure we have all components
             if not all([html, css, js]):
                 print("Warning: Some code blocks were missing from the response")
-                # Use existing code for any missing blocks
-                html = html or self.current_design['html']
-                css = css or self.current_design['css']
-                js = js or self.current_design['js']
+                # Parse current_design for any missing blocks
+                current_html = self._extract_code_block(self.current_design, 'html')
+                current_css = self._extract_code_block(self.current_design, 'css')
+                current_js = self._extract_code_block(self.current_design, 'javascript')
+                
+                html = html or current_html
+                css = css or current_css
+                js = js or current_js
 
             # Replace profile pic placeholder if available
             if self.profile_pic_path:
@@ -394,12 +293,7 @@ JavaScript Code:
 {js}
 ```"""
 
-            return {
-                'message': formatted_response,
-                'html': html,
-                'css': css,
-                'js': js
-            }
+            return formatted_response
 
         except Exception as e:
             print(f"Design update error: {str(e)}")
@@ -563,16 +457,20 @@ Resume:
                 print(f"Unexpected response type: {type(text)}")
                 return ""
                 
-            start_marker = f"```{language}"
-            end_marker = "```"
-            
-            start = text.find(start_marker)
+            # Look for both variations of language markers
+            start_markers = [f"```{language}", "```"]
+            start = -1
+            for marker in start_markers:
+                start = text.find(marker)
+                if start != -1:
+                    start += len(marker)
+                    break
+                    
             if start == -1:
                 print(f"Could not find start marker for {language}")
                 return ""
             
-            start += len(start_marker)
-            end = text.find(end_marker, start)
+            end = text.find("```", start)
             
             if end == -1:
                 print(f"Could not find end marker for {language}")
