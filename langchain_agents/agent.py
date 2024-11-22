@@ -1,6 +1,6 @@
 from langchain.agents import AgentExecutor, create_structured_chat_agent
 from langchain.memory import ConversationBufferMemory
-from tools import generate_website_content, optimize_profile, publish_to_github_pages
+from tools import generate_website_content, optimize_profile, publish_to_github_pages, get_current_github_readme, generate_github_readme, publish_to_github_readme
 from langchain_core.prompts import ChatPromptTemplate
 from typing import Optional, Dict, Any, List, Union
 from custom_together_llm import TogetherLLM
@@ -20,7 +20,7 @@ Here are the tools available to you:
 </tools>
 
 You are an advanced AI assistant called RecruiTree specializing in job applications and professional online presence. 
-Your primary functions include helping users create professional websites and optimize their GitHub profiles. 
+Your primary functions include helping users create professional websites, create nice README for their GitHub profiles and optimize their GitHub profiles. 
 Your goal is to provide helpful, accurate, and complete responses to user queries, while being proactive in suggesting next steps.
 
 The names of these tools are:
@@ -93,8 +93,9 @@ Action:
 
 Remember to always respond with a valid JSON blob containing a single action, either using a tool or providing the final answer. 
 Do not mention tools names but instead mention what you can do with the tools.
-If you don't need to use tools or lack sufficient information, respond directly with a final answer. 
+If you don't need to use tools or lack sufficient information, respond directly with a final answer. Especially if the user asks you to generate a README or a website.
 Be thorough in your responses and always aim to provide value to the user in their job application process.
+If the user does not have a GitHub profile or README, you can propose to create one based on their resume.
 If the user asks for a website, include the full, correctly formatted website code in your final answer. This is very important.
    """),
 ("placeholder", "{chat_history}"),
@@ -132,6 +133,9 @@ class JobApplicationAgent:
             self._create_logging_tool(generate_website_content),
             self._create_logging_tool(optimize_profile),
             self._create_logging_tool(publish_to_github_pages),
+            self._create_logging_tool(get_current_github_readme),
+            self._create_logging_tool(generate_github_readme),
+            self._create_logging_tool(publish_to_github_readme)
         ]
         
         self.memory = ConversationBufferMemory(
@@ -151,7 +155,7 @@ class JobApplicationAgent:
             memory=self.memory,
             verbose=True,
             handle_parsing_errors=True,
-            max_iterations=5,
+            max_iterations=10,
         )
 
         # Remove all files in temp folder for a fresh start

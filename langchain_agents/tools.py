@@ -73,11 +73,11 @@ class ProfileOptimizerInput(BaseModel):
     resume_content: Optional[str] = Field(None, description="Optional resume text content")
     llm: Optional[object] = Field(None, description="Optional LLM instance to use")
 
-class HomeScreenInput(BaseModel):
-    resume_content: Optional[str] = Field(None, description="Optional resume text content")
-    style: Optional[str] = Field(None, description="Optional style preference")
-    color_scheme: Optional[str] = Field(None, description="Optional color scheme preference")
-    profile_image_url: Optional[str] = Field(None, description="URL of the profile image")
+
+class GitHubReadmeInput(BaseModel):
+    query: Optional[str] = Field(None, description="Optional description or additional specific instructions for content generation")
+    resume_content: str = Field(description="Resume text content")
+    github_token: str = Field(description="GitHub personal access token")
     llm: Optional[object] = Field(None, description="Optional LLM instance to use")
 
 @tool(args_schema=WebsiteContentInput)
@@ -190,6 +190,92 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
             
     except Exception as e:
         return f"Error processing request: {str(e)}"
+
+@tool(args_schema=GitHubReadmeInput)
+def generate_github_readme(query: Optional[str] = None, resume_content: Optional[str] = None, github_token: Optional[str] = None, llm: Optional[object] = None) -> str:
+    """Generate a GitHub README file based on resume content.
+    If you are not provided with a resume text content, you can provide a description or additional instructions for content generation.
+    """
+    llm = llm or TogetherLLM(temperature=0.7)
+    try:
+        g = Github(github_token)
+        user = g.get_user()
+        username = user.login
+    except Exception as e:
+        username = None
+    
+    if not resume_content:
+        return f"""If not a complete resume, please provide at least the following information to generate a GitHub README file:
+        1. Your full name
+        2. Professional summary
+        3. Work experience (including company names, positions, dates, and key achievements)
+        4. Skills (both technical and soft skills)"""
+
+    content_prompt = """
+    You are a GitHub README generator. Generate a README file based on the resume content.
+    It should be fun and creative.
+    Here is an example of a good README structure, feel free to use it and modify it:
+    ```
+    <img src="https://komarev.com/ghpvc/?username=[USERNAME]&style=flat-square">
+    # Hi everyone :wave:
+
+    I'm a [JOB] from [LOCATION], [BIO].
+
+    ## Quick overview
+
+
+    #### GitHub stats 
+    <a href="https://github.com/[USERNAME]/github-readme-stats">
+    <img align="center" src="https://github-readme-stats.anuraghazra1.vercel.app/api?username=[USERNAME]&show_icons=true&line_height=27&include_all_commits=true" alt="My github stats" />
+    </a>
+
+    #### GitHub Streaks
+    <a href="https://streak-stats.demolab.com/?user=[USERNAME]">
+    <img align="center" src="https://streak-stats.demolab.com/?user=[USERNAME]" alt="My github streak" />
+    </a>
+
+    ### Current Projects
+
+    [PROJECTS]
+
+    ## My skills 📜
+
+    ### Web technologies
+
+    - Python 
+    - C++
+    - JavaScript
+    - TypeScript
+    - Next.js
+    ...
+
+    ### Languages 🌐
+
+    | Language      | Proficiency                                                               |
+    | ------------- | ------------------------------------------------------------------------- |
+
+    ## What I'm currently learning 📚
+
+    [LEARNINGS / INTERESTS]
+    ```
+
+    Make sure to only include the information you have in the resume content.
+    Remember to make it fun and creative. Include emojis, colors, nice fonts and other creative elements.
+    Only output the README content, nothing else.
+    """
+    if query:
+        response = llm.invoke([
+            {"role": "system", "content": content_prompt},
+            {"role": "user", "content": f"Generate a README file based on this resume content and these very important additional instructions: {query}\n\nResume content:\n{resume_content}\n\nThe GitHub username is: {username}"}
+        ])
+    else:
+        response = llm.invoke([
+            {"role": "system", "content": content_prompt},
+            {"role": "user", "content": f"Generate a README file based on this resume content:\n\n{resume_content}\n\nThe GitHub username is: {username}"}
+        ])
+    with open("temp/README.md", "w") as file:
+        file.write(response)
+    return response
 
 @tool(args_schema=ProfileOptimizerInput)
 def optimize_profile(url: str, profile_type: str, resume_content: Optional[str] = None, llm: Optional[object] = None) -> str:
@@ -348,6 +434,28 @@ def optimize_profile(url: str, profile_type: str, resume_content: Optional[str] 
 #         return f"Error generating home screen: {str(e)}"
 
 @tool
+def get_current_github_readme(github_token: str, llm: Optional[object] = None) -> str:
+    """Get the current GitHub README file."""
+    llm = llm or TogetherLLM(temperature=0.1)
+    try:    
+        g = Github(github_token)
+        user = g.get_user()
+        repo_name = f"{user.login}/{user.login}"
+        try:
+            repo = g.get_repo(repo_name)
+        except Exception as e:
+            print(f"Error getting repository: {str(e)}")
+            return "The profile repository does not exist yet."
+        try:
+            contents = repo.get_contents("README.md")
+            return "Current README file:\n" + contents.decoded_content.decode("utf-8")
+        except:
+            return "The user does not have a profile README file yet."
+    except Exception as e:
+        return f"Error getting current GitHub README: {str(e)}, please check your GitHub token."
+
+
+@tool
 def publish_to_github_pages(github_token: str, description: str, llm: Optional[object] = None) -> str:
     """
     Publishes website content to GitHub Pages
@@ -436,3 +544,40 @@ def publish_to_github_pages(github_token: str, description: str, llm: Optional[o
     except Exception as e:
         return f"Error publishing website: {str(e)}"
 
+@tool
+def publish_to_github_readme(github_token: str, readme_content: Optional[str] = None, llm: Optional[object] = None) -> str:
+    """Publish a GitHub README file to a GitHub repository."""
+    llm = llm or TogetherLLM(temperature=0.1)
+
+    try:
+        if not readme_content:
+            with open("temp/README.md", "r") as file:
+                readme_content = file.read()
+        g = Github(github_token)
+        user = g.get_user()
+        repo_name = user.login
+
+        try:
+            repo = user.get_repo(repo_name)
+        except:
+            repo = user.create_repo(repo_name, description="My GitHub profile")
+        
+        try: 
+            contents = repo.get_contents("README.md")
+            repo.update_file(
+                "README.md",
+                "Update README",
+                readme_content,
+                contents.sha
+            )
+        except:
+            repo.create_file(
+                "README.md",
+                "Initial README",
+                readme_content
+            )
+
+        return f"README published at: https://github.com/{user.login}"
+
+    except Exception as e:
+        return f"Error publishing README: {str(e)}"
