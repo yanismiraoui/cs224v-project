@@ -361,11 +361,11 @@ def publish_to_github_pages(github_token: str, description: str, llm: Optional[o
     
     try:
         # Load HTML, CSS and JS from temp folder
-        with open(f"temp/index.html", "r") as file:
+        with open(f"temp/home_index.html", "r") as file:
             html_content = file.read()
-        with open(f"temp/style.css", "r") as file:
+        with open(f"temp/home_style.css", "r") as file:
             css_content = file.read()
-        with open(f"temp/script.js", "r") as file:
+        with open(f"temp/home_script.js", "r") as file:
             javascript_content = file.read()
         
         # Initialize GitHub client

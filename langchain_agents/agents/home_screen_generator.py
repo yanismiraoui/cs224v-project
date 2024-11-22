@@ -32,25 +32,88 @@ class HomeScreenGeneratorAgent:
                                  resume_content: str = None) -> Union[Dict[str, str], str]:
         """Generate the home screen based on user input."""
         try:
+            # Initialize personal_info if not already done
+            if not hasattr(self, 'personal_info'):
+                self.personal_info = {}
+
+            # 1. First try to parse resume if provided
+            if resume_content:
+                parsed_info = await self._parse_resume(resume_content)
+                if parsed_info:
+                    self.personal_info = parsed_info
+                    print("Successfully extracted info from resume")
+                    
+                # Parse resume sections
+                sections = await self._parse_resume_sections(resume_content)
+                if sections:
+                    self.personal_info['sections'] = sections
+                    print("Successfully extracted sections from resume")
+
+            # 2. Parse user input for any personal information
+            user_info = await self._parse_user_input(user_input)
+            if user_info:
+                # Update personal_info with any new information
+                self.personal_info.update({
+                    k: v for k, v in user_info.items() if v
+                })
+                print(f"Updated personal information from user input: {user_info}")
+
+            # 3. Check for missing required info
+            required_fields = ['name', 'role', 'bio', 'contact']
+            missing_fields = [
+                field for field in required_fields 
+                if not self.personal_info.get(field)
+            ]
+            
+            if missing_fields:
+                return {
+                    "status": "missing_info",
+                    "missing_fields": missing_fields,
+                    "message": f"""I need your {missing_fields[0]} to continue.
+
+Please type it directly (e.g., "My {missing_fields[0]} is...")"""
+                }
+
+            # 4. If we have all required info, generate or update design
+            response = None
             if not self.current_design:
-                if resume_content and not self.personal_info:
-                    parsed_info = await self._parse_resume(resume_content)
-                    if parsed_info is None:
-                        # Return indication that we need manual input
-                        return {
-                            'status': 'need_info',
-                            'message': 'Could not extract all information from resume. Please provide manually.'
-                        }
-                
-                self.current_design = await self._generate_initial_design(user_input)
-                return self.current_design
+                response = await self._generate_initial_design(user_input)
             else:
-                self.current_design = await self._update_design(user_input)
-                return self.current_design
+                response = await self._update_design(user_input)
+
+            # If we have a valid response, save the files
+            if response and isinstance(response, str):
+                # Extract code blocks
+                html = self._extract_code_block(response, 'html')
+                css = self._extract_code_block(response, 'css')
+                js = self._extract_code_block(response, 'javascript')
+
+                if all([html, css, js]):
+                    # Save files to temp folder
+                    import os
+                    temp_dir = "temp"
+                    os.makedirs(temp_dir, exist_ok=True)
+
+                    # Save each component with 'home_' prefix
+                    with open(os.path.join(temp_dir, "home_index.html"), "w") as f:
+                        f.write(html.strip())
+                    
+                    with open(os.path.join(temp_dir, "home_style.css"), "w") as f:
+                        f.write(css.strip())
+                    
+                    with open(os.path.join(temp_dir, "home_script.js"), "w") as f:
+                        f.write(js.strip())
+                    
+                    print("Successfully saved home screen files to temp directory")
+
+                return response
 
         except Exception as e:
             print(f"Generation error: {str(e)}")
-            raise
+            return {
+                "status": "error",
+                "message": str(e)
+            }
 
     async def _generate_initial_design(self, user_input: str) -> str:
         """Generate website code using separate calls for HTML, CSS, and JS."""
@@ -191,40 +254,39 @@ CSS:
 
 Requirements:
 1. Particles Background:
-   - Initialize particles.js
-   - Dark, elegant particle effect
-   - Ensure particles are visible
-   - Handle initialization errors
+   - Initialize particles.js with an elegant dark theme
+   - Ensure particles are visible but subtle
+   - Include proper error handling
 
-2. Animations:
-   - Add animations ONLY for elements that exist in HTML
-   - Smooth fade-in effects
-   - Text reveal for appropriate elements
-   - Respect existing styles
-   - Don't override CSS positioning
+2. Text Animations:
+   - Use GSAP for animations
+   - Create sequential fade-in animations for all main content elements
+   - Each element should fade in after the previous one
+   - Include subtle movement (like slide up)
+   - Use appropriate timing and easing
+   - Maintain professional, smooth transitions
 
 3. Error Handling:
    - Check if elements exist before animating
    - Graceful fallbacks
    - Console warnings for missing elements
-   - Clean error handling
 
 4. Performance:
-   - Efficient animations
-   - No conflicts with particles
-   - Smooth loading sequence
-   - Proper event handling
+   - Initialize after DOM content loaded
+   - Optimize animation performance
+   - Ensure smooth interaction between particles and animations
 
-Return ONLY JavaScript code that works with this specific HTML and CSS."""
+Return ONLY JavaScript code that creates a professional, animated experience."""
 
         response = await self.llm.ainvoke([
             {
                 "role": "system",
                 "content": """You are a JavaScript expert who ensures:
-- Animations work with existing elements
-- No conflicts with HTML/CSS
+- Dynamic, responsive animations
+- Professional particle effects
+- Smooth performance
 - Proper error handling
-- Smooth performance"""
+Generate code that works with the provided HTML structure."""
             },
             {"role": "user", "content": js_prompt}
         ])
@@ -500,3 +562,40 @@ Resume:
     <script>{js}</script>
 </body>
 </html>""" 
+
+    async def _parse_user_input(self, user_input: str) -> Optional[Dict[str, str]]:
+        """Parse user input for personal information using LLM."""
+        try:
+            parse_prompt = f"""Extract the following information from this user message, if present:
+- Name
+- Role/Profession
+- Bio/Description
+- Contact Information (email, phone, or social media)
+
+Format the response as a JSON object with these exact keys: name, role, bio, contact
+If any information is missing, set its value to null.
+
+User message: {user_input}"""
+
+            response = await self.llm.ainvoke([
+                {
+                    "role": "system",
+                    "content": "You are an expert at extracting personal information from text. Return only valid JSON."
+                },
+                {"role": "user", "content": parse_prompt}
+            ])
+
+            content = response['content'] if isinstance(response, dict) else response
+            
+            # Parse the JSON response
+            try:
+                parsed_info = json.loads(content)
+                # Filter out None/null values
+                return {k: v for k, v in parsed_info.items() if v}
+            except json.JSONDecodeError:
+                print("Failed to parse LLM response as JSON")
+                return None
+
+        except Exception as e:
+            print(f"Error parsing user input: {str(e)}")
+            return None 

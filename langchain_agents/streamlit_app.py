@@ -126,54 +126,56 @@ How can I help you?"""
         except Exception as e:
             st.error(f"Error saving feedback: {str(e)}")
 
-    def render_chat_message(self, role: str, content: str):
+    def render_chat_message(self, role: str, content: str, message_index: int = None):
         """Render a chat message with feedback for assistant messages."""
         with st.chat_message(role):
             st.markdown(content)
             
             # Only show feedback if it's an assistant message AND not the welcome message
             if role == "assistant" and content != st.session_state.chat_history[0]["content"]:
-                message_hash = hash(content)
+                # Create a unique key using content hash, message index, and timestamp
+                message_id = f"{hash(content)}_{message_index}_{len(st.session_state.chat_history)}"
                 
-                if message_hash not in st.session_state.submitted_feedbacks:
-                    feedback_key = f"feedback_{message_hash}"
+                if message_id not in st.session_state.submitted_feedbacks:
+                    col1, col2 = st.columns([3, 1])
                     
-                    feedback = st.feedback(
-                        options="faces",
-                        key=feedback_key
-                    )
-                    feedback_text = st.text_area(
-                        "Additional comments (optional):",
-                        key=f"{feedback_key}_text"
-                    )
+                    with col1:
+                        feedback = st.feedback(
+                            options="faces",
+                            key=f"feedback_face_{message_id}"
+                        )
+                        feedback_text = st.text_area(
+                            "Additional comments (optional):",
+                            key=f"feedback_text_{message_id}"
+                        )
                     
-                    if st.button("Send", key=f"{feedback_key}_save"):
-                        if feedback is None:
-                            st.error("Please provide a rating before submitting! 🙏")
-                        elif not feedback_text.strip():
-                            st.error("Please provide some feedback text before submitting! 💬")
-                        else:
-                            # Format entire chat history
-                            chat_history_text = "\n\n".join([
-                                f"{msg['role'].upper()}: {msg['content']}" 
-                                for msg in st.session_state.chat_history
-                            ])
-                            
-                            # Save feedback with user information
-                            feedback_data = pd.DataFrame([{
-                                'timestamp': pd.Timestamp.now(),
-                                'user_id': st.session_state.user_id,
-                                'chat_history': chat_history_text,
-                                'user_input': st.session_state.chat_history[-2]['content'],
-                                'agent_response': content,
-                                'rating': feedback,
-                                'feedback_text': feedback_text
-                            }])
-                            self.save_feedback(feedback_data.iloc[0].to_dict())
-                            st.session_state.submitted_feedbacks.add(message_hash)
-                            if 'show_toast' not in st.session_state:
-                                st.session_state.show_toast = True
-                            st.rerun()
+                    with col2:
+                        if st.button("Send", key=f"feedback_submit_{message_id}"):
+                            if feedback is None:
+                                st.error("Please provide a rating before submitting! 🙏")
+                            elif not feedback_text.strip():
+                                st.error("Please provide some feedback text before submitting! 💬")
+                            else:
+                                # Rest of your feedback handling code...
+                                chat_history_text = "\n\n".join([
+                                    f"{msg['role'].upper()}: {msg['content']}" 
+                                    for msg in st.session_state.chat_history
+                                ])
+                                
+                                feedback_data = pd.DataFrame([{
+                                    'timestamp': pd.Timestamp.now(),
+                                    'user_id': st.session_state.user_id,
+                                    'chat_history': chat_history_text,
+                                    'user_input': st.session_state.chat_history[-2]['content'],
+                                    'agent_response': content,
+                                    'rating': feedback,
+                                    'feedback_text': feedback_text
+                                }])
+                                self.save_feedback(feedback_data.iloc[0].to_dict())
+                                st.session_state.submitted_feedbacks.add(message_id)
+                                if 'show_toast' not in st.session_state:
+                                    st.session_state.show_toast = True
+                                st.rerun()
             
         if hasattr(st.session_state, 'show_toast'):
             st.toast("Thank you for your feedback! ", icon="✨")
@@ -181,8 +183,8 @@ How can I help you?"""
     
     def display_chat_history(self):
         """Display the chat history."""
-        for message in st.session_state.chat_history:
-            self.render_chat_message(message["role"], message["content"])
+        for idx, message in enumerate(st.session_state.chat_history):
+            self.render_chat_message(message["role"], message["content"], idx)
             
     async def process_input(self, user_input: str, pdf_text: str = None) -> str:
         """Process user input and get agent response."""
