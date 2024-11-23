@@ -1,12 +1,16 @@
 from langchain.tools import tool
-from typing import Optional
+from typing import Optional, Dict
 from custom_together_llm import TogetherLLM
-from github import Github
+from github import Github, InputGitTreeElement
 from pydantic import BaseModel, Field
 import requests
 import json
 from bs4 import BeautifulSoup
 import random
+from agents.home_screen_generator import HomeScreenGeneratorAgent
+import os
+import base64
+
 
 def parse_resume(resume_content: str, llm: Optional[object] = None) -> str:
     """
@@ -79,6 +83,42 @@ class GitHubReadmeInput(BaseModel):
     resume_content: str = Field(description="Resume text content")
     github_token: str = Field(description="GitHub personal access token")
     llm: Optional[object] = Field(None, description="Optional LLM instance to use")
+
+
+home_screen_agent = HomeScreenGeneratorAgent()
+@tool
+async def generate_home_screen(
+    user_input: str,
+    resume_content: Optional[str] = None,
+    llm: Optional[object] = None
+) -> Dict[str, str]:
+    """
+    ONLY use this tool to create or modify the HOME/LANDING PAGE of a personal website.
+    This tool specifically handles the main entry point of the website.
+    
+    Examples of when to use this tool:
+    - "Create a landing page for my website"
+    - "Design the home page of my portfolio"
+    - "Update the main page of my site"
+    - "Make my home page more modern"
+    
+    Do NOT use this tool for:
+    - Other website pages (projects, contact, about, etc.)
+    - Full website generation
+    - GitHub profile changes
+    - README generation
+    
+    Args:
+        user_input: The user's request for home page creation or modification
+        resume_content: Optional resume text to use for content
+        llm: Optional LLM instance
+    """
+    return await home_screen_agent.generate_home_screen(
+        user_input=user_input,
+        resume_content=resume_content,
+    )
+
+
 
 @tool(args_schema=WebsiteContentInput)
 def generate_website_content(query: Optional[str] = None, resume_content: Optional[str] = None, llm: Optional[TogetherLLM] = None) -> str:
@@ -318,121 +358,6 @@ def optimize_profile(url: str, profile_type: str, resume_content: Optional[str] 
             {"role": "user", "content": f"Optimize this {profile_type} profile: {content}"}
         ])
 
-# @tool(args_schema=HomeScreenInput)
-# def generate_home_screen(
-#     resume_content: Optional[str] = None, 
-#     style: Optional[str] = None, 
-#     color_scheme: Optional[str] = None,
-#     profile_image_url: Optional[str] = None,
-#     llm: Optional[TogetherLLM] = None
-# ) -> str:
-#     """Generate a minimal home screen with optional profile picture."""
-    
-#     llm = llm or TogetherLLM(temperature=0.7)
-    
-#     # Parse resume to extract only needed information
-#     if isinstance(resume_content, str):
-#         parsed_resume = parse_resume(resume_content, llm)
-#         resume_data = json.loads(parsed_resume)
-#         if resume_data.get("ERROR") == "NOT ENOUGH INFORMATION":
-#             return "Not enough information. Please provide: name, current role/education, and a brief introduction."
-    
-#     styles = {
-#         "modern-gradient": "Clean lines with gradient backgrounds and smooth transitions",
-#         "minimal-elegant": "Simple, typography-focused with plenty of whitespace",
-#         "artistic-abstract": "Creative, unique layouts with artistic elements",
-#     }
-    
-#     color_schemes = {
-#         "vibrant-purple-blue": "background: linear-gradient(45deg, #6366f1, #2563eb)",
-#         "sunset-orange-pink": "background: linear-gradient(45deg, #f59e0b, #ec4899)",
-#         "midnight-dark": "background: linear-gradient(45deg, #1e293b, #0f172a)",
-#     }
-    
-#     selected_style = style if style in styles else random.choice(list(styles.keys()))
-#     selected_colors = color_scheme if color_scheme in color_schemes else random.choice(list(color_schemes.keys()))
-    
-#     # Add profile image handling to the prompt
-#     profile_image_css = """
-#     .profile-image {
-#         width: 200px;
-#         height: 200px;
-#         border-radius: 50%;
-#         object-fit: cover;
-#         margin-bottom: 2rem;
-#         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-#         border: 4px solid rgba(255, 255, 255, 0.2);
-#         animation: fadeIn 1s ease-out;
-#     }
-#     """
-    
-#     home_screen_prompt = f"""Create a minimal, impactful home screen using HTML, CSS, and JavaScript.
-    
-#     Style Theme: {selected_style}
-#     Color Scheme: {selected_colors}
-    
-#     IMPORTANT - Include these elements in order:
-#     1. Profile Picture (circular, centered, with subtle border and shadow)
-#     2. Full Name (large, prominent typography)
-#     3. Current Role or Education
-#     4. A brief, 1-2 sentence introduction
-    
-#     Use this profile image URL if provided: {profile_image_url if profile_image_url else "No image provided"}
-    
-#     If no image URL is provided, add a placeholder with initials.
-    
-#     DO NOT include:
-#     - Work history
-#     - Skills
-#     - Projects
-#     - Contact information
-#     - Navigation menus
-#     - Social media links
-    
-#     Design Requirements:
-#     1. Single-page, full-screen layout
-#     2. Large, creative typography for the name
-#     3. Smooth entrance animations
-#     4. Subtle hover effects
-#     5. Clean, minimal design
-#     6. Responsive layout
-    
-#     Technical Requirements:
-#     - Modern CSS (Grid/Flexbox)
-#     - Simple animations for text entrance
-#     - Clean, minimal JavaScript
-#     - Well-commented code
-    
-#     The final design should be striking yet minimal, focusing attention on these three key elements.
-#     Return complete, ready-to-use HTML, CSS, and JavaScript code.
-#     """
-    
-#     try:
-#         if parsed_resume:
-#             # Extract only needed information
-#             name = resume_data.get("name", "")
-#             current_role = ""
-#             if "experience" in resume_data and resume_data["experience"]:
-#                 current_role = f"{resume_data['experience'][0]['position']} at {resume_data['experience'][0]['company']}"
-#             elif "education" in resume_data and resume_data["education"]:
-#                 current_role = f"Student at {resume_data['education'][0]['school']}"
-            
-#             return llm.invoke([
-#                 {"role": "system", "content": home_screen_prompt},
-#                 {"role": "user", "content": f"""Generate a minimal home screen with:
-#                 Name: {name}
-#                 Current Role: {current_role}
-#                 Create a brief, compelling introduction based on the experience."""}
-#             ]).replace('"', "'")
-#         else:
-#             return llm.invoke([
-#                 {"role": "system", "content": home_screen_prompt},
-#                 {"role": "user", "content": "Generate a template home screen with placeholder content for name, role, and brief intro."}
-#             ]).replace('"', "'")
-            
-#     except Exception as e:
-#         return f"Error generating home screen: {str(e)}"
-
 @tool
 def get_current_github_readme(github_token: str, llm: Optional[object] = None) -> str:
     """Get the current GitHub README file."""
@@ -456,26 +381,9 @@ def get_current_github_readme(github_token: str, llm: Optional[object] = None) -
 
 
 @tool
-def publish_to_github_pages(github_token: str, description: str, llm: Optional[object] = None) -> str:
-    """
-    Publishes website content to GitHub Pages
-
-    Args:
-        github_token: GitHub personal access token (REQUIRED)
-        description: Description for the repository
-        llm: Optional LLM instance to use (will create new one if not provided)
-    """
-    llm = llm or TogetherLLM(temperature=0.1)
-    
+async def publish_to_github_pages(github_token: str, branch_name: str = "main") -> str:
+    """Publish website files to GitHub Pages."""
     try:
-        # Load HTML, CSS and JS from temp folder
-        with open(f"temp/home_index.html", "r") as file:
-            html_content = file.read()
-        with open(f"temp/home_style.css", "r") as file:
-            css_content = file.read()
-        with open(f"temp/home_script.js", "r") as file:
-            javascript_content = file.read()
-        
         # Initialize GitHub client
         g = Github(github_token)
         user = g.get_user()
@@ -484,65 +392,82 @@ def publish_to_github_pages(github_token: str, description: str, llm: Optional[o
         # Create or get repository
         try:
             repo = user.get_repo(repo_name)
+            print(f"Found existing repository: {repo_name}")
         except:
             repo = user.create_repo(
                 repo_name,
-                description=description,
+                description="My Portfolio Website",
                 homepage=f"https://{user.login}.github.io",
             )
-        
-        # Create/update index.html
-        try:
-            contents = repo.get_contents("index.html")
-            repo.update_file(
-                contents.path,
-                "Update portfolio website",
-                html_content,
-                contents.sha
-            )
-        except:
-            repo.create_file(
-                "index.html",
-                "Initial portfolio website",
-                html_content
-            )
-        
-        # create/update the style.css file
-        try:
-            contents = repo.get_contents("style.css")
-            repo.update_file(
-                contents.path,
-                "Update portfolio website",
-                css_content,
-                contents.sha
-            )
-        except:
-            repo.create_file(
-                "style.css",
-                "Initial portfolio website",
-                css_content
-            )
+            print(f"Created new repository: {repo_name}")
 
-        # create/update the script.js file
-        try:
-            contents = repo.get_contents("script.js")
-            repo.update_file(
-                contents.path,
-                "Update portfolio website",
-                javascript_content,
-                contents.sha
-            )
-        except:
-            repo.create_file(
-                "script.js",
-                "Initial portfolio website",
-                javascript_content
-            )
+        # Walk through temp directory and get all files
+        temp_dir = "temp"
+        files_to_publish = {}
         
-        return f"Website published at: https://{user.login}.github.io"
-    
+        for root, dirs, files in os.walk(temp_dir):
+            for file in files:
+                # Get the full local path
+                local_path = os.path.join(root, file)
+                # Create the GitHub path by removing 'temp/' from the start
+                github_path = os.path.relpath(local_path, temp_dir)
+                files_to_publish[github_path] = local_path
+                print(f"Found file to publish: {github_path}")
+
+        # Create necessary directories first
+        directories = set()
+        for github_path in files_to_publish.keys():
+            directory = os.path.dirname(github_path)
+            if directory and directory not in directories:
+                try:
+                    repo.get_contents(directory)
+                except:
+                    repo.create_file(
+                        f"{directory}/.gitkeep",
+                        f"Create {directory} directory",
+                        ""
+                    )
+                    print(f"Created directory: {directory}")
+                directories.add(directory)
+
+        # Update or create each file
+        for github_path, local_path in files_to_publish.items():
+            try:
+                with open(local_path, 'rb') as file:
+                    content = file.read()
+                    
+                try:
+                    # Try to update existing file
+                    contents = repo.get_contents(github_path)
+                    repo.update_file(
+                        contents.path,
+                        "Update portfolio website",
+                        content,
+                        contents.sha
+                    )
+                    print(f"Updated {github_path}")
+                except:
+                    # Create new file if it doesn't exist
+                    repo.create_file(
+                        github_path,
+                        "Initial portfolio website",
+                        content
+                    )
+                    print(f"Created {github_path}")
+            except Exception as e:
+                print(f"Error with {github_path}: {str(e)}")
+
+        # Enable GitHub Pages if not already enabled
+        try:
+            repo.edit(has_pages=True)
+            print("GitHub Pages enabled")
+        except:
+            print("Note: Could not automatically enable GitHub Pages. Please enable it in repository settings.")
+
+        return f"Website successfully published! View it at: https://{user.login}.github.io\nNote: It may take a few minutes for changes to appear."
+
     except Exception as e:
-        return f"Error publishing website: {str(e)}"
+        return f"Error publishing website: {str(e)}\nPlease check your GitHub token and permissions."
 
 @tool
 def publish_to_github_readme(github_token: str, readme_content: Optional[str] = None, llm: Optional[object] = None) -> str:
@@ -576,8 +501,8 @@ def publish_to_github_readme(github_token: str, readme_content: Optional[str] = 
                 "Initial README",
                 readme_content
             )
-
         return f"README published at: https://github.com/{user.login}"
 
     except Exception as e:
         return f"Error publishing README: {str(e)}"
+

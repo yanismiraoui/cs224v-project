@@ -5,6 +5,8 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+import os
+from PIL import Image
 
 @dataclass
 class Conversation:
@@ -29,21 +31,16 @@ class HomeScreenGeneratorAgent:
 
     async def generate_home_screen(self, 
                                  user_input: str,
-                                 resume_content: str = None) -> Union[Dict[str, str], str]:
+                                 resume_content: str = None) -> str:
         """Generate the home screen based on user input."""
         try:
-            # Initialize personal_info if not already done
-            if not hasattr(self, 'personal_info'):
-                self.personal_info = {}
-
-            # 1. First try to parse resume if provided
+            # 1. Parse resume if provided
             if resume_content:
                 parsed_info = await self._parse_resume(resume_content)
                 if parsed_info:
                     self.personal_info = parsed_info
                     print("Successfully extracted info from resume")
                     
-                # Parse resume sections
                 sections = await self._parse_resume_sections(resume_content)
                 if sections:
                     self.personal_info['sections'] = sections
@@ -74,7 +71,7 @@ class HomeScreenGeneratorAgent:
 Please type it directly (e.g., "My {missing_fields[0]} is...")"""
                 }
 
-            # 4. If we have all required info, generate or update design
+            # 4. Generate or update design
             response = None
             if not self.current_design:
                 response = await self._generate_initial_design(user_input)
@@ -83,37 +80,33 @@ Please type it directly (e.g., "My {missing_fields[0]} is...")"""
 
             # If we have a valid response, save the files
             if response and isinstance(response, str):
-                # Extract code blocks
                 html = self._extract_code_block(response, 'html')
                 css = self._extract_code_block(response, 'css')
                 js = self._extract_code_block(response, 'javascript')
 
                 if all([html, css, js]):
                     # Save files to temp folder
-                    import os
                     temp_dir = "temp"
                     os.makedirs(temp_dir, exist_ok=True)
 
-                    # Save each component with 'home_' prefix
-                    with open(os.path.join(temp_dir, "home_index.html"), "w") as f:
+                    with open(os.path.join(temp_dir, "index.html"), "w") as f:
                         f.write(html.strip())
                     
-                    with open(os.path.join(temp_dir, "home_style.css"), "w") as f:
+                    with open(os.path.join(temp_dir, "style.css"), "w") as f:
                         f.write(css.strip())
                     
-                    with open(os.path.join(temp_dir, "home_script.js"), "w") as f:
+                    with open(os.path.join(temp_dir, "script.js"), "w") as f:
                         f.write(js.strip())
-                    
-                    print("Successfully saved home screen files to temp directory")
 
-                return response
+                    await self._check_and_create_required_files(js, temp_dir)
+                    
+                    return "Home page has been generated and saved successfully! You can now publish it to GitHub Pages."
+                else:
+                    return "Failed to generate all required code components."
 
         except Exception as e:
             print(f"Generation error: {str(e)}")
-            return {
-                "status": "error",
-                "message": str(e)
-            }
+            return f"Error generating home page: {str(e)}"
 
     async def _generate_initial_design(self, user_input: str) -> str:
         """Generate website code using separate calls for HTML, CSS, and JS."""
@@ -155,6 +148,16 @@ JavaScript Code:
 
     async def _generate_html(self) -> str:
         """Generate HTML file."""
+        # Check for profile picture in temp/imgs folder
+        profile_pic_exists = os.path.exists(os.path.join("temp", "imgs", "profile_pic.jpg"))
+        
+        profile_pic_section = ""
+        if profile_pic_exists:
+            profile_pic_section = """
+            - Profile Picture: Include an img tag referencing imgs/profile_pic.jpg
+            - Place profile picture prominently in the layout
+            - Add proper alt text for accessibility"""
+
         html_prompt = f"""Create a clean HTML file for a personal website with these requirements:
 
 Content:
@@ -162,6 +165,7 @@ Content:
 - Role: {self.personal_info.get('role')}
 - Bio: {self.personal_info.get('bio')}
 - Contact: {self.personal_info.get('contact')}
+{profile_pic_section}
 
 Structure:
 1. Navigation bar with:
@@ -169,6 +173,7 @@ Structure:
    - Section links: {', '.join(self.personal_info.get('sections', []))}
 
 2. Main content:
+   {f'- Profile picture with class="profile-pic"' if profile_pic_exists else ''}
    - Name (h1)
    - Role (professional subtitle)
    - Bio paragraph
@@ -176,12 +181,14 @@ Structure:
 
 Requirements:
 - Clean, semantic HTML
-- No styling classes (minimal classes needed)
+{f'- Include profile picture with src="imgs/profile_pic.jpg"' if profile_pic_exists else ''}
 - Proper indentation
 - Include particles-js container
 - Link to external scripts (particles.js, gsap)
+- MUST include link to style.css in the head section
+- MUST include link to script.js at the end of body
 
-Return ONLY the HTML code."""
+Return ONLY the HTML code with proper CSS and JS file references."""
 
         response = await self.llm.ainvoke([
             {
@@ -195,6 +202,21 @@ Return ONLY the HTML code."""
 
     async def _generate_css(self, html: str) -> str:
         """Generate CSS file based on HTML structure."""
+        # Check for profile picture in temp/imgs folder
+        profile_pic_exists = os.path.exists(os.path.join("temp", "imgs", "profile_pic.jpg"))
+        
+        profile_pic_section = """
+2. Profile Picture Styling:
+   - Set max-width: 200px
+   - Set max-height: 200px
+   - Create circular profile picture with border-radius: 50%
+   - Add white border: 3px solid #ffffff
+   - Use object-fit: cover to maintain aspect ratio
+   - Position on the right side of the content
+   - Add margin-left for spacing from text
+   - Add subtle box shadow
+   - Add responsive sizing for mobile devices""" if profile_pic_exists else ""
+
         css_prompt = f"""Create clean CSS for this HTML structure:
 
 {html}
@@ -207,40 +229,76 @@ Style Requirements:
    - Max-width: 600px for text blocks
    - Ensure text CONTRASTS with dark background
 
-2. Colors and Visibility:
+{profile_pic_section}
+
+3. Colors and Visibility:
    - Dark, elegant theme (#0a0a0a background)
    - Text must be clearly visible (light color on dark)
    - Subtle hover effects for links
    - NO boxes or containers
    - Content directly on particles background
 
-3. Spacing:
+4. Spacing:
    - Generous margins between sections
    - Proper line height for readability
    - Comfortable padding where needed
 
-4. Critical Requirements:
+5. Critical Requirements:
    - Style all HTML elements present in the code
    - Ensure navigation is properly spaced
    - Make contact links clearly clickable
    - Keep particles visible behind content
    - NO background colors on content sections
+   - Make profile picture container centered on page
+
+6. Responsive Design:
+   - Profile picture should scale down on mobile (max 150px)
+   - Maintain circular shape at all sizes
+   - Ensure proper spacing on all devices
 
 Return ONLY the CSS code that matches this HTML structure."""
 
         response = await self.llm.ainvoke([
             {
                 "role": "system",
-                "content": """You are a CSS expert who ensures:
-- All content is visible and readable
-- Styles match HTML structure exactly
-- No conflicts with particles background
-- Professional spacing and typography"""
+                "content": "You are a CSS expert. Return only clean, efficient CSS code. Include specific sizing for profile pictures and ensure responsive design."
             },
             {"role": "user", "content": css_prompt}
         ])
 
-        return response if isinstance(response, str) else response.get('content', '')
+        # Add specific profile picture styles if they're missing from the LLM response
+        css_content = response if isinstance(response, str) else response.get('content', '')
+        
+        if profile_pic_exists and ".profile-pic" not in css_content:
+            profile_pic_css = """
+/* Profile Picture Styles */
+.profile-pic-container {
+    width: 200px;
+    height: 200px;
+    margin: 2rem auto;
+    overflow: hidden;
+    border-radius: 50%;
+    border: 3px solid #ffffff;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.profile-pic {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+@media (max-width: 768px) {
+    .profile-pic-container {
+        width: 150px;
+        height: 150px;
+        margin: 1.5rem auto;
+    }
+}
+"""
+            css_content += profile_pic_css
+
+        return css_content
 
     async def _generate_js(self, html: str, css: str) -> str:
         """Generate JavaScript file based on HTML and CSS."""
@@ -599,3 +657,62 @@ User message: {user_input}"""
         except Exception as e:
             print(f"Error parsing user input: {str(e)}")
             return None 
+
+    async def _check_and_create_required_files(self, js_code: str, temp_dir: str) -> None:
+        """Analyze JS code and create any required configuration files."""
+        try:
+            analysis_prompt = f"""Analyze this JavaScript code and identify any external configuration files that need to be created.
+            For each required file:
+            1. Identify the filename
+            2. Determine the expected content/format
+            3. Generate appropriate configuration content
+
+            JavaScript code:
+            {js_code}
+
+            Return your response in this format:
+            REQUIRED_FILES:
+            filename1: content
+            filename2: content
+            
+            If no files are needed, return "NO_FILES_REQUIRED"
+            """
+
+            response = await self.llm.ainvoke([
+                {
+                    "role": "system",
+                    "content": "You are an expert at analyzing JavaScript code and generating configuration files. If you generate JSON content, ensure it's valid JSON."
+                },
+                {"role": "user", "content": analysis_prompt}
+            ])
+
+            content = response if isinstance(response, str) else response.get('content', '')
+            
+            if content.strip() == "NO_FILES_REQUIRED":
+                return
+
+            # Parse the response and create files
+            current_file = None
+            current_content = []
+            
+            for line in content.split('\n'):
+                if line.startswith('REQUIRED_FILES:'):
+                    continue
+                elif line.strip().endswith(':'):
+                    # Save previous file if exists
+                    if current_file and current_content:
+                        with open(os.path.join(temp_dir, current_file), 'w') as f:
+                            f.write('\n'.join(current_content))
+                    # Start new file
+                    current_file = line.strip().rstrip(':')
+                    current_content = []
+                elif line.strip():
+                    current_content.append(line)
+            
+            # Save last file
+            if current_file and current_content:
+                with open(os.path.join(temp_dir, current_file), 'w') as f:
+                    f.write('\n'.join(current_content))
+
+        except Exception as e:
+            print(f"Error creating required files: {str(e)}") 

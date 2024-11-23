@@ -277,29 +277,25 @@ How can I help you?"""
                 
                 with upload_col2:
                     # Profile picture uploader
-                    profile_pic = st.file_uploader("Upload Profile Picture", 
-                                                 type=['jpg', 'jpeg', 'png'],
-                                                 key="profile_pic_uploader")
-                    if profile_pic:
-                        try:
-                            # Save image to static folder
-                            img = Image.open(profile_pic)
-                            if img.mode == 'RGBA':
-                                img = img.convert('RGB')
-                            max_size = (200, 200)
-                            img.thumbnail(max_size, Image.Resampling.LANCZOS)
-                            
-                            # Save to static folder
-                            static_path = Path(__file__).parent / "static" / "images"
-                            static_path.mkdir(parents=True, exist_ok=True)
-                            img_path = static_path / "profile_pic.jpg"
-                            img.save(img_path, format="JPEG", quality=70, optimize=True)
-                            
-                            # Show preview
-                            st.image(img, caption="Profile Picture Preview", width=150)
-                            st.success("Profile picture uploaded!")
-                        except Exception as e:
-                            st.error(f"Error processing image: {str(e)}")
+                    uploaded_file = st.file_uploader("Upload your profile picture", type=['jpg', 'jpeg', 'png'])
+                    if uploaded_file is not None:
+                        # Create temp/imgs directory if it doesn't exist
+                        imgs_dir = os.path.join("temp", "imgs")
+                        os.makedirs(imgs_dir, exist_ok=True)  # This creates both temp and imgs directories if they don't exist
+                        
+                        # Save the uploaded file
+                        profile_pic = Image.open(uploaded_file)
+                        profile_pic_path = os.path.join(imgs_dir, "profile_pic.jpg")
+                        
+                        # Convert to RGB if necessary (in case of PNG upload)
+                        if profile_pic.mode in ('RGBA', 'P'):
+                            profile_pic = profile_pic.convert('RGB')
+                        
+                        # Save the image
+                        profile_pic.save(profile_pic_path)
+                        
+                        # Show the uploaded image
+                        st.image(profile_pic, caption='Uploaded Profile Picture', width=200)
                 
                 with st.expander("Example Prompts", expanded=True):
                     st.markdown("""
