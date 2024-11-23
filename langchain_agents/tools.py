@@ -54,10 +54,10 @@ def get_github_profile(url: str, llm: Optional[object] = None) -> str:
     """
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
-    content = soup.find('div', class_='application-main')
+    content = soup.find('article', class_='markdown-body entry-content container-lg f5')
 
     return llm.invoke([
-        {"role": "system", "content": "You are a GitHub profile parser. Extract the following information in a structured format: "},
+        {"role": "system", "content": "You are a HTML GitHub profile parser. You have to extract the information from the HTML content and return it in a structured JSON format. Make sure to include ALL the information you can find in the HTML content. ONLY return the JSON, nothing else."},
         {"role": "user", "content": f"Parse this GitHub profile into an organized JSON format:\n\n{content}"}
     ])
 
@@ -69,7 +69,6 @@ class WebsiteContentInput(BaseModel):
 
 class ProfileOptimizerInput(BaseModel): 
     url: str = Field(description="The profile URL to optimize")
-    profile_type: str = Field(description="The type of profile (GitHub)")
     resume_content: Optional[str] = Field(None, description="Optional resume text content")
     llm: Optional[object] = Field(None, description="Optional LLM instance to use")
 
@@ -277,22 +276,21 @@ def generate_github_readme(query: Optional[str] = None, resume_content: Optional
     return response
 
 @tool(args_schema=ProfileOptimizerInput)
-def optimize_profile(url: str, profile_type: str, resume_content: Optional[str] = None, llm: Optional[object] = None) -> str:
+def optimize_github_profile(url: str, resume_content: Optional[str] = None, llm: Optional[object] = None) -> str:
     """Optimize professional profiles (GitHub).
     
     Args:
         url: The profile URL to optimize
-        profile_type: The type of profile (GitHub)
         resume_content: Optional string containing resume text content
         llm: Optional LLM instance to use (will create new one if not provided)
 
     Returns:
         str: Optimized profile content
     """
-    if profile_type.lower() not in ['github']:
-        return "Error: Profile type must be 'GitHub'"
-    
+    llm = llm or TogetherLLM(temperature=0.1)
+
     content = get_github_profile(url, llm)
+    print(f"GitHub profile content: {content}")
         
     parsed_resume = None
     if isinstance(resume_content, str):
@@ -300,21 +298,23 @@ def optimize_profile(url: str, profile_type: str, resume_content: Optional[str] 
         if json.loads(parsed_resume).get("ERROR") == "NOT ENOUGH INFORMATION":
             return "Not enough information to optimize profile. Please provide the following information: " + json.loads(parsed_resume)["information_needed"]
 
-    if parsed_resume:
-        system_prompt = f"""You are an expert profile optimizer.
-        You are given a resume and a profile URL from a {profile_type} profile.
-        You need to optimize the profile based on the resume data and the profile content.
-        Make sure to include all the information you have and be creative and critical.
-        Remember to make optimize it for {profile_type}.
+    system_prompt = f"""You are an expert profile optimizer.
+        You are a given GitHub profile and sometimes a resume.
+        You need to optimize the profile based on the resume data and the profile content and provide advice on how to improve it.
+        Make sure to include all the information you have and be creative and critical. But also mention what is particularly good in the profile.
+        Try to focus on the most important information and on the keywords that are most relevant for the profile. Do not consider potential issues with pictures or images.
+        Remember to optimize it for GitHub but do not include any links or URLs in your advice.
+        Make your advice straight to the point and as constructive and organized (use bullet points and lists if needed) as possible.
         """
+    if parsed_resume:
         return llm.invoke([
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Optimize this {profile_type} profile:\n{content}\n\nResume data:\n{parsed_resume}"}
+            {"role": "user", "content": f"Optimize this GitHub profile:\n{content}\n\nResume data:\n{parsed_resume}"}
         ])
     else:
         return llm.invoke([
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Optimize this {profile_type} profile: {content}"}
+            {"role": "user", "content": f"Optimize this GitHub profile: {content}"}
         ])
 
 @tool
