@@ -3,7 +3,6 @@ import os
 from pathlib import Path
 import logging
 from typing import Optional
-
 import toml
 import PyPDF2
 from agent import JobApplicationAgent

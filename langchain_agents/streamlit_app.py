@@ -11,6 +11,7 @@ import uuid
 import psycopg2
 from datetime import datetime
 from streamlit_option_menu import option_menu
+from PIL import Image
 
 # Initialize environment variables and configurations
 try:
@@ -58,6 +59,8 @@ How can I help you?"""
         
         if 'uploaded_resume' not in st.session_state:
             st.session_state.uploaded_resume = None
+        if 'profile_pic_base64' not in st.session_state:
+            st.session_state.profile_pic_base64 = None
         
         # Use the connection string directly instead of separate parameters
         self.db_url = secrets['POSTGRES_DB']
@@ -68,6 +71,10 @@ How can I help you?"""
         # Add a new session state variable to track submitted feedback
         if 'submitted_feedbacks' not in st.session_state:
             st.session_state.submitted_feedbacks = set()
+
+         # Create static folder for images if it doesn't exist
+        self.static_folder = Path(__file__).parent / "static" / "images"
+        self.static_folder.mkdir(parents=True, exist_ok=True)
     
     @staticmethod
     async def initialize_agent() -> JobApplicationAgent:
@@ -190,6 +197,34 @@ How can I help you?"""
             error_message = f"Error processing your request: {str(e)}"
             st.error(error_message)
             return error_message
+
+    def save_profile_pic(self, uploaded_file) -> str:
+        """Save profile picture to static folder and return the path."""
+        try:
+            # Open and process the image
+            img = Image.open(uploaded_file)
+
+            # Convert to RGB if needed
+            if img.mode == 'RGBA':
+                img = img.convert('RGB')
+
+            # Resize
+            max_size = (200, 200)
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+
+            # Generate unique filename
+            filename = f"profile_pic_{st.session_state.user_id}.jpg"
+            filepath = self.static_folder / filename
+
+            # Save image
+            img.save(filepath, format="JPEG", quality=70, optimize=True)
+
+            # Return relative path
+            return f"static/images/{filename}"
+
+        except Exception as e:
+            st.error(f"Error saving image: {str(e)}")
+            return None
     
     def format_action_history(self) -> str:
         """Format the action history for display."""
@@ -244,14 +279,43 @@ How can I help you?"""
             with col2:
                 st.header("Tools & Examples")
                 
-                # Add file uploader in the tools section with limit of 1 file and 2MB size
-                uploaded_file = st.file_uploader("Upload your resume (PDF)", type=['pdf'], accept_multiple_files=False)
-                if uploaded_file:
-                    if uploaded_file.size > 2*1024*1024:
-                        st.error("File size limit is 2MB")
-                    else:
-                        st.session_state.uploaded_resume = uploaded_file
-                        st.success("Resume uploaded successfully!")
+                # Create two columns for the upload buttons
+                upload_col1, upload_col2 = st.columns(2)
+
+                with upload_col1:
+                    # Resume uploader
+                    uploaded_file = st.file_uploader("Upload Resume (PDF)", 
+                                                   type=['pdf'], 
+                                                   accept_multiple_files=False,
+                                                   key="resume_uploader")
+                    if uploaded_file:
+                        if uploaded_file.size > 2*1024*1024:
+                            st.error("File size limit is 2MB")
+                        else:
+                            st.session_state.uploaded_resume = uploaded_file
+                            st.success("Resume uploaded!")
+
+                with upload_col2:
+                    # Profile picture uploader
+                    uploaded_file = st.file_uploader("Upload your profile picture", type=['jpg', 'jpeg', 'png'])
+                    if uploaded_file is not None:
+                        # Create temp/imgs directory if it doesn't exist
+                        imgs_dir = os.path.join("temp", "imgs")
+                        os.makedirs(imgs_dir, exist_ok=True)  # This creates both temp and imgs directories if they don't exist
+
+                        # Save the uploaded file
+                        profile_pic = Image.open(uploaded_file)
+                        profile_pic_path = os.path.join(imgs_dir, "profile_pic.jpg")
+
+                        # Convert to RGB if necessary (in case of PNG upload)
+                        if profile_pic.mode in ('RGBA', 'P'):
+                            profile_pic = profile_pic.convert('RGB')
+
+                        # Save the image
+                        profile_pic.save(profile_pic_path)
+
+                        # Show the uploaded image
+                        st.image(profile_pic, caption='Uploaded Profile Picture', width=200)
                 
                 with st.expander("Example Prompts", expanded=True):
                     st.markdown("""

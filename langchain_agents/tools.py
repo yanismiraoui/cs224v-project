@@ -1,5 +1,5 @@
 from langchain.tools import tool
-from typing import Optional
+from typing import Optional, Dict
 from custom_together_llm import TogetherLLM
 from github import Github
 from pydantic import BaseModel, Field
@@ -7,6 +7,8 @@ import requests
 import json
 from bs4 import BeautifulSoup
 import random
+from agents.home_screen_generator import HomeScreenGeneratorAgent
+import os
 
 def parse_resume(resume_content: str, llm: Optional[object] = None) -> str:
     """
@@ -77,6 +79,40 @@ class GitHubReadmeInput(BaseModel):
     resume_content: str = Field(description="Resume text content")
     github_token: str = Field(description="GitHub personal access token")
     llm: Optional[object] = Field(None, description="Optional LLM instance to use")
+
+
+home_screen_agent = HomeScreenGeneratorAgent()
+@tool
+async def generate_home_screen(
+    user_input: str,
+    resume_content: Optional[str] = None,
+    llm: Optional[object] = None
+) -> Dict[str, str]:
+    """
+    ONLY use this tool to create or modify the HOME/LANDING PAGE of a personal website.
+    This tool specifically handles the main entry point of the website.
+    
+    Examples of when to use this tool:
+    - "Create a landing page for my website"
+    - "Design the home page of my portfolio"
+    - "Update the main page of my site"
+    - "Make my home page more modern"
+    
+    Do NOT use this tool for:
+    - Other website pages (projects, contact, about, etc.)
+    - Full website generation
+    - GitHub profile changes
+    - README generation
+    
+    Args:
+        user_input: The user's request for home page creation or modification
+        resume_content: Optional resume text to use for content
+        llm: Optional LLM instance
+    """
+    return await home_screen_agent.generate_home_screen(
+        user_input=user_input,
+        resume_content=resume_content,
+    )
 
 @tool(args_schema=WebsiteContentInput)
 def generate_website_content(query: Optional[str] = None, resume_content: Optional[str] = None, llm: Optional[TogetherLLM] = None) -> str:
@@ -340,26 +376,14 @@ def get_current_github_readme(github_token: str, llm: Optional[object] = None) -
 
 
 @tool
-def publish_to_github_pages(github_token: str, description: str, llm: Optional[object] = None) -> str:
-    """
-    Publishes website content to GitHub Pages
+async def publish_to_github_pages(github_token: str, branch_name: str = "main") -> str:
+    """Publish website files to GitHub Pages.
 
     Args:
         github_token: GitHub personal access token (REQUIRED)
-        description: Description for the repository
-        llm: Optional LLM instance to use (will create new one if not provided)
+        branch_name: The name of the branch to publish to (default: "main")
     """
-    llm = llm or TogetherLLM(temperature=0.1)
-    
     try:
-        # Load HTML, CSS and JS from temp folder
-        with open(f"temp/index.html", "r") as file:
-            html_content = file.read()
-        with open(f"temp/style.css", "r") as file:
-            css_content = file.read()
-        with open(f"temp/script.js", "r") as file:
-            javascript_content = file.read()
-        
         # Initialize GitHub client
         g = Github(github_token)
         user = g.get_user()
@@ -371,62 +395,76 @@ def publish_to_github_pages(github_token: str, description: str, llm: Optional[o
         except:
             repo = user.create_repo(
                 repo_name,
-                description=description,
+                description="My Portfolio Website",
                 homepage=f"https://{user.login}.github.io",
             )
-        
-        # Create/update index.html
-        try:
-            contents = repo.get_contents("index.html")
-            repo.update_file(
-                contents.path,
-                "Update portfolio website",
-                html_content,
-                contents.sha
-            )
-        except:
-            repo.create_file(
-                "index.html",
-                "Initial portfolio website",
-                html_content
-            )
-        
+
+        # Walk through temp directory and get all files
+        temp_dir = "temp"
+        files_to_publish = {}
+        for root, dirs, files in os.walk(temp_dir):
+            for file in files:
+                # Get the full local path
+                local_path = os.path.join(root, file)
+                # Create the GitHub path by removing 'temp/' from the start
+                github_path = os.path.relpath(local_path, temp_dir)
+                files_to_publish[github_path] = local_path
+                print(f"Found file to publish: {github_path}")
+
+        # Create necessary directories first
+        directories = set()
+        for github_path in files_to_publish.keys():
+            directory = os.path.dirname(github_path)
+            if directory and directory not in directories:
+                try:
+                    repo.get_contents(directory)
+                except:
+                    repo.create_file(
+                        f"{directory}/.gitkeep",
+                        f"Create {directory} directory",
+                        ""
+                    )
+                    print(f"Created directory: {directory}")
+                directories.add(directory)
+
+        # Update or create each file
+        for github_path, local_path in files_to_publish.items():
+            try:
+                with open(local_path, 'rb') as file:
+                    content = file.read()
+
+                try:
+                    # Try to update existing file
+                    contents = repo.get_contents(github_path)
+                    repo.update_file(
+                        contents.path,
+                        "Update portfolio website",
+                        content,
+                        contents.sha
+                    )
+                    print(f"Updated {github_path}")
+                except:
+                    # Create new file if it doesn't exist
+                    repo.create_file(
+                        github_path,
+                        "Initial portfolio website",
+                        content
+                    )
+                    print(f"Created {github_path}")
+            except Exception as e:
+                print(f"Error with {github_path}: {str(e)}")
+
+        # Enable GitHub Pages if not already enabled
         # create/update the style.css file
         try:
-            contents = repo.get_contents("style.css")
-            repo.update_file(
-                contents.path,
-                "Update portfolio website",
-                css_content,
-                contents.sha
-            )
+            repo.edit(has_pages=True)
         except:
-            repo.create_file(
-                "style.css",
-                "Initial portfolio website",
-                css_content
-            )
+            print("Note: Could not automatically enable GitHub Pages. Please enable it in repository settings.")
 
-        # create/update the script.js file
-        try:
-            contents = repo.get_contents("script.js")
-            repo.update_file(
-                contents.path,
-                "Update portfolio website",
-                javascript_content,
-                contents.sha
-            )
-        except:
-            repo.create_file(
-                "script.js",
-                "Initial portfolio website",
-                javascript_content
-            )
-        
-        return f"Website published at: https://{user.login}.github.io"
+        return f"Website successfully published! View it at: https://{user.login}.github.io\nNote: It may take a few minutes for changes to appear."
     
     except Exception as e:
-        return f"Error publishing website: {str(e)}"
+        return f"Error publishing website: {str(e)}\nPlease check your GitHub token and permissions."
 
 @tool
 def publish_to_github_readme(github_token: str, readme_content: Optional[str] = None, llm: Optional[object] = None) -> str:
