@@ -1,12 +1,19 @@
 from langchain.agents import AgentExecutor, create_structured_chat_agent
 from langchain.memory import ConversationBufferMemory
-from tools import generate_website_content, optimize_profile, publish_to_github_pages, get_current_github_readme, generate_github_readme, publish_to_github_readme
+from tools import (
+    generate_home_screen,
+    publish_to_github_pages,
+    get_current_github_readme,
+    generate_github_readme,
+    publish_to_github_readme
+)
 from langchain_core.prompts import ChatPromptTemplate
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from custom_together_llm import TogetherLLM
 import logging
 from datetime import datetime
 from pathlib import Path
+# from agents.home_screen_generator import HomeScreenGeneratorAgent
 
 
 
@@ -122,14 +129,14 @@ class JobApplicationAgent:
         """Initialize the job application agent with LangChain components."""
         setup_logging()  # Initialize logging
         self.llm = TogetherLLM(temperature=0.1)
+        # self.home_screen_agent = HomeScreenGeneratorAgent() 
         
         # Add action history attribute
         self.action_history: List[Dict[str, Any]] = []
         
         # Initialize tools with logging wrapper
         self.tools = [
-            self._create_logging_tool(generate_website_content),
-            self._create_logging_tool(optimize_profile),
+            self._create_logging_tool(generate_home_screen),
             self._create_logging_tool(publish_to_github_pages),
             self._create_logging_tool(get_current_github_readme),
             self._create_logging_tool(generate_github_readme),
@@ -157,8 +164,35 @@ class JobApplicationAgent:
         )
 
         # Remove all files in temp folder for a fresh start
-        for file in Path("temp").glob("*"):
-            file.unlink()
+        try:
+            # Clean up temp directory if it exists
+            temp_path = Path("temp")
+            if temp_path.exists():
+                # Only remove files, not directories
+                for file in temp_path.glob("*.*"):  # This will match files with extensions
+                    try:
+                        file.unlink()
+                    except PermissionError:
+                        print(f"Could not remove file: {file}")
+                        continue
+                
+                # Clean up imgs directory separately
+                imgs_path = temp_path / "imgs"
+                if imgs_path.exists():
+                    for file in imgs_path.glob("*.*"):
+                        try:
+                            file.unlink()
+                        except PermissionError:
+                            print(f"Could not remove file: {file}")
+                            continue
+            
+            # Create fresh directories
+            temp_path.mkdir(exist_ok=True)
+            (temp_path / "imgs").mkdir(exist_ok=True)
+
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+            # Continue initialization even if cleanup fails
     
     def _create_logging_tool(self, tool):
         """Wrap a tool with logging functionality."""
@@ -192,9 +226,10 @@ class JobApplicationAgent:
         """Return the action history."""
         return self.action_history
     
-    async def process(self, user_input: str, resume_content: Optional[str] = None) -> str:
-      """Process user input and get agent response."""
-      try:  
+
+    async def process(self, user_input: str, resume_content: Optional[str] = None) -> Union[Dict[str, str], str]:
+        """Process user input and return either generated code or questions."""
+        try:  
           combined_input = user_input
           if resume_content:
               combined_input = f"{user_input}\nResume Content: {resume_content}"
@@ -202,5 +237,28 @@ class JobApplicationAgent:
           result = await self.agent_executor.ainvoke({"input": combined_input})
           print("Raw agent response:", result)
           return result.get("output", str(result))
-      except Exception as e:
+        except Exception as e:
           return f"Error: {str(e)}"
+        
+        # try:
+        #     logging.info(f"Starting process with user_input: {user_input}")
+            
+        #     # Generate home screen or get questions
+        #     response = await self.home_screen_agent.generate_home_screen(
+        #         user_input=user_input,
+        #         resume_content=resume_content,
+        #     )
+            
+        #     # If response is a string, it contains questions
+        #     if isinstance(response, str):
+        #         return response
+            
+        #     # If response is a dict, it contains generated code
+        #     if isinstance(response, dict):
+        #         return response
+            
+        #     raise Exception("Unexpected response type from HomeScreenGenerator")
+            
+        # except Exception as e:
+        #     logging.error(f"Processing failed with exception: {str(e)}")
+        #     raise

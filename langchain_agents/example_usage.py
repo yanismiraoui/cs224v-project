@@ -113,6 +113,8 @@ class ResumeProcessor:
             logger.error(f"Processing failed: {str(e)}")
             raise
 
+
+
 async def main():
     resume_path = Path('./cv_examples/CV Yanis MIRAOUI.pdf')
     processor = ResumeProcessor()
