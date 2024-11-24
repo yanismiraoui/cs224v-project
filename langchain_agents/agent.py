@@ -235,7 +235,6 @@ class JobApplicationAgent:
               combined_input = f"{user_input}\nResume Content: {resume_content}"
       
           result = await self.agent_executor.ainvoke({"input": combined_input})
-          print("Raw agent response:", result)
           return result.get("output", str(result))
         except Exception as e:
           return f"Error: {str(e)}"

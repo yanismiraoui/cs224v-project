@@ -21,13 +21,15 @@ class HomeScreenGeneratorAgent:
     
     def __init__(self):
         self.llm = TogetherLLM(
-            model="meta-llama/Meta-Llama-3-70B-Instruct-Turbo",
-            temperature=0.7,
+            model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+            temperature=0,
             max_tokens=4000
         )
         self.personal_info = {}
-        self.current_design = None
-        self.profile_pic_path = "static/images/profile_pic.jpg"  # Default path to look for profile pic
+        self.html = None
+        self.css = None
+        self.js = None
+        self.profile_pic_path = "static/images/profile_pic.jpg"
 
     async def generate_home_screen(self, 
                                  user_input: str,
@@ -73,64 +75,48 @@ Please type it directly (e.g., "My {missing_fields[0]} is...")"""
 
             # 4. Generate or update design
             response = None
-            if not self.current_design:
-                response = await self._generate_initial_design(user_input)
+            if not any([self.html, self.css, self.js]):
+                await self._generate_initial_design(user_input)
             else:
-                response = await self._update_design(user_input)
+                print("Updating design...")
+                await self._update_design(user_input)
 
             # If we have a valid response, save the files
-            if response and isinstance(response, str):
-                html = self._extract_code_block(response, 'html')
-                css = self._extract_code_block(response, 'css')
-                js = self._extract_code_block(response, 'javascript')
+            if all([self.html, self.css, self.js]):
+            # Save files to temp folder
+                temp_dir = "temp"
+                os.makedirs(temp_dir, exist_ok=True)
 
-                if all([html, css, js]):
-                    # Save files to temp folder
-                    temp_dir = "temp"
-                    os.makedirs(temp_dir, exist_ok=True)
+                with open(os.path.join(temp_dir, "index.html"), "w") as f:
+                    f.write(self.html.strip())
+                
+                with open(os.path.join(temp_dir, "style.css"), "w") as f:
+                    f.write(self.css.strip())
+                
+                with open(os.path.join(temp_dir, "script.js"), "w") as f:
+                    f.write(self.js.strip())
 
-                    with open(os.path.join(temp_dir, "index.html"), "w") as f:
-                        f.write(html.strip())
-                    
-                    with open(os.path.join(temp_dir, "style.css"), "w") as f:
-                        f.write(css.strip())
-                    
-                    with open(os.path.join(temp_dir, "script.js"), "w") as f:
-                        f.write(js.strip())
-
-                    await self._check_and_create_required_files(js, temp_dir)
-                    
-                    return "Home page has been generated and saved successfully! You can now publish it to GitHub Pages."
-                else:
-                    return "Failed to generate all required code components."
+                # await self._check_and_create_required_files(self.js, temp_dir)
+                
+                return "Home page has been generated and saved successfully! You can now publish it to GitHub Pages."
+            else:
+                return "Failed to generate all required code components."
 
         except Exception as e:
             print(f"Generation error: {str(e)}")
             return f"Error generating home page: {str(e)}"
 
-    async def _generate_initial_design(self, user_input: str) -> str:
+    async def _generate_initial_design(self, user_input: str) -> None:
         """Generate website code using separate calls for HTML, CSS, and JS."""
         try:
             # Generate HTML first
-            html_code = await self._generate_html()
+            self.html = await self._generate_html()
             
             # Generate CSS based on HTML
-            css_code = await self._generate_css(html_code)
+            self.css = await self._generate_css(self.html)
             
             # Generate JS based on HTML and CSS
-            js_code = await self._generate_js(html_code, css_code)
-
-            # Format the response with labels outside code blocks
-            formatted_response = f"""HTML Code:
-{html_code.strip()}
-
-CSS Code:
-{css_code.strip()}
-
-JavaScript Code:
-{js_code.strip()}"""
-
-            return formatted_response
+            self.js = await self._generate_js(self.html, self.css)
 
         except Exception as e:
             print(f"Design generation error: {str(e)}")
@@ -157,6 +143,16 @@ JavaScript Code:
             - Profile Picture: Include an img tag referencing imgs/profile_pic.jpg
             - Place profile picture prominently in the layout
             - Add proper alt text for accessibility"""
+        
+        sections = self.personal_info.get('sections', [])
+        nav_links = []
+        for section in sections:
+            section_filename = section.lower().replace(" ", "_") + ".html"
+            if section.lower() == "about me":
+                nav_links.append('- "About Me" links to index.html')
+            else:
+                nav_links.append(f'- "{section}" links to {section_filename}')
+
 
         html_prompt = f"""Create a clean HTML file for a personal website with these requirements:
 
@@ -169,15 +165,18 @@ Content:
 
 Structure:
 1. Navigation bar with:
-   - "About Me" (index.html)
-   - Section links: {', '.join(self.personal_info.get('sections', []))}
+  - The "About Me" link MUST point to index.html
+  - Each nav item MUST be an <a> tag with href to its corresponding HTML file
+  - Navigation links MUST follow this EXACT pattern (except for the "About Me" link):
+     {chr(10).join(nav_links)}
 
 2. Main content:
    {f'- Profile picture with class="profile-pic"' if profile_pic_exists else ''}
    - Name (h1)
    - Role (professional subtitle)
+   - Section header "About Me" (h2)
    - Bio paragraph
-   - "Get in Touch" section with hyperlinked contact info
+   - Section header "Get In Touch" (h2) with hyperlinked contact info
 
 Requirements:
 - Clean, semantic HTML
@@ -188,12 +187,17 @@ Requirements:
 - MUST include link to style.css in the head section
 - MUST include link to script.js at the end of body
 
-Return ONLY the HTML code with proper CSS and JS file references."""
+Return ONLY the HTML code with proper CSS and JS file references without any explanations, comments, or markdown formatting. """
 
         response = await self.llm.ainvoke([
             {
                 "role": "system",
-                "content": "You are an HTML expert. Return only clean, semantic HTML code."
+                "content": """You are an HTML expert. Return only clean, semantic HTML code.
+                DO NOT include:
+                - No markdown code block markers (```)
+            - No language identifiers
+            - No explanations before or after the code
+            """
             },
             {"role": "user", "content": html_prompt}
         ])
@@ -224,7 +228,7 @@ Return ONLY the HTML code with proper CSS and JS file references."""
 Style Requirements:
 1. Text Styling:
    - All text must be left-aligned
-   - Bold, clear headers
+   - Clear headers
    - Clean typography
    - Max-width: 600px for text blocks
    - Ensure text CONTRASTS with dark background
@@ -232,8 +236,7 @@ Style Requirements:
 {profile_pic_section}
 
 3. Colors and Visibility:
-   - Dark, elegant theme (#0a0a0a background)
-   - Text must be clearly visible (light color on dark)
+   - Text must be clearly visible (light color on dark, dark color on light)
    - Subtle hover effects for links
    - NO boxes or containers
    - Content directly on particles background
@@ -245,23 +248,27 @@ Style Requirements:
 
 5. Critical Requirements:
    - Style all HTML elements present in the code
-   - Ensure navigation is properly spaced
+   - Ensure navigation is centered and properly spaced
    - Make contact links clearly clickable
    - Keep particles visible behind content
    - NO background colors on content sections
    - Make profile picture container centered on page
 
 6. Responsive Design:
-   - Profile picture should scale down on mobile (max 150px)
-   - Maintain circular shape at all sizes
+   - Profile picture and content should scale down on mobile
    - Ensure proper spacing on all devices
 
-Return ONLY the CSS code that matches this HTML structure."""
+Return ONLY the CSS code that matches this HTML structure without any explanations, comments, or markdown formatting."""
 
         response = await self.llm.ainvoke([
             {
                 "role": "system",
-                "content": "You are a CSS expert. Return only clean, efficient CSS code. Include specific sizing for profile pictures and ensure responsive design."
+                "content": """You are a CSS expert. Return only clean, efficient CSS code. Include specific sizing for profile pictures and ensure responsive design.
+            DO NOT include:
+            - No markdown code block markers (```)
+            - No language identifiers
+            - No explanations before or after the code
+            """
             },
             {"role": "user", "content": css_prompt}
         ])
@@ -312,17 +319,18 @@ CSS:
 
 Requirements:
 1. Particles Background:
-   - Initialize particles.js with an elegant dark theme
+   - Initialize particles.js with an elegant theme
    - Ensure particles are visible but subtle
    - Include proper error handling
 
 2. Text Animations:
    - Use GSAP for animations
-   - Create sequential fade-in animations for all main content elements
-   - Each element should fade in after the previous one
+   - Create fade-in animations for all main content elements
    - Include subtle movement (like slide up)
    - Use appropriate timing and easing
    - Maintain professional, smooth transitions
+   - Define ALL animation configurations within this file
+   - DO NOT reference external animation configurations
 
 3. Error Handling:
    - Check if elements exist before animating
@@ -334,7 +342,7 @@ Requirements:
    - Optimize animation performance
    - Ensure smooth interaction between particles and animations
 
-Return ONLY JavaScript code that creates a professional, animated experience."""
+Return ONLY the JavaScript code without any explanations, comments, or markdown formatting."""
 
         response = await self.llm.ainvoke([
             {
@@ -344,79 +352,40 @@ Return ONLY JavaScript code that creates a professional, animated experience."""
 - Professional particle effects
 - Smooth performance
 - Proper error handling
-Generate code that works with the provided HTML structure."""
+Generate code that works with the provided HTML structure.
+
+DO NOT include:
+- No markdown code block markers (```)
+- No language identifiers
+- No explanations before or after the code"""
             },
             {"role": "user", "content": js_prompt}
         ])
 
         return response if isinstance(response, str) else response.get('content', '')
 
-    async def _update_design(self, feedback: str) -> str:
-        """Update existing design based on user feedback."""
-        update_prompt = f"""Update the existing website design based on this feedback:
-
-User Feedback: "{feedback}"
-
-Current Design:
-{self.current_design}
-
-Make the requested changes while maintaining all existing features and structure.
-Return the complete updated code in three separate blocks."""
-
+    async def _update_design(self, user_input: str) -> None:
+        """Update existing design based on user input."""
         try:
-            response = await self.llm.ainvoke([
-                {
-                    "role": "system",
-                    "content": """You are a web designer updating websites based on user feedback.
-Always return complete HTML, CSS, and JavaScript code blocks.
-Never return partial updates - include all existing code with your changes."""
-                },
-                {"role": "user", "content": update_prompt}
-            ])
+            if not all([self.html, self.css, self.js]):
+                await self._generate_initial_design(user_input)
+                return
 
-            content = response['content'] if isinstance(response, dict) else response
-            
-            # Extract all code blocks
-            html = self._extract_code_block(content, 'html')
-            css = self._extract_code_block(content, 'css')
-            js = self._extract_code_block(content, 'javascript')
-
-            # Ensure we have all components
-            if not all([html, css, js]):
-                print("Warning: Some code blocks were missing from the response")
-                # Parse current_design for any missing blocks
-                current_html = self._extract_code_block(self.current_design, 'html')
-                current_css = self._extract_code_block(self.current_design, 'css')
-                current_js = self._extract_code_block(self.current_design, 'javascript')
+            # Parse what needs to be updated
+            updates_needed = await self._parse_update_request(user_input)
+            print(f"Updates needed: {updates_needed}")
+            # Update each component as needed
+            if updates_needed.get('html'):
+                self.html = await self._update_html(updates_needed['html'])
                 
-                html = html or current_html
-                css = css or current_css
-                js = js or current_js
-
-            # Replace profile pic placeholder if available
-            if self.profile_pic_path:
-                html = html.replace('${self.profile_pic_path}', self.profile_pic_path)
-
-            # Format the response with clear labels and code blocks
-            formatted_response = f"""HTML Code:
-```html
-{html}
-```
-
-CSS Code:
-```css
-{css}
-```
-
-JavaScript Code:
-```javascript
-{js}
-```"""
-
-            return formatted_response
+            if updates_needed.get('css'):
+                self.css = await self._update_css(updates_needed['css'])
+                
+            if updates_needed.get('javascript'):
+                self.js = await self._update_javascript(updates_needed['javascript'])
 
         except Exception as e:
-            print(f"Design update error: {str(e)}")
+            print(f"Error updating design: {str(e)}")
             raise
 
     async def _parse_resume(self, resume_content: str) -> Optional[Dict[str, Any]]:
@@ -456,7 +425,6 @@ Resume text:
 
             # Parse the response
             info_text = info_response['content'] if isinstance(info_response, dict) else info_response
-            print("Raw Resume Parse Response:", info_text)  # Debug print
             
             info_dict = {}
             for line in info_text.strip().split('\n'):
@@ -603,24 +571,6 @@ Resume:
             print(f"Error extracting {language} code block: {str(e)}")
             return ""
 
-    def create_preview(self, html: str, css: str, js: str) -> str:
-        """Create a combined preview version."""
-        return f"""<!DOCTYPE html>
-<html lang='en'>
-<head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <title>Preview</title>
-    <script src='https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js'></script>
-    <script src='https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js'></script>
-    <style>{css}</style>
-</head>
-<body>
-    {html}
-    <script>{js}</script>
-</body>
-</html>""" 
-
     async def _parse_user_input(self, user_input: str) -> Optional[Dict[str, str]]:
         """Parse user input for personal information using LLM."""
         try:
@@ -686,6 +636,7 @@ User message: {user_input}"""
                 {"role": "user", "content": analysis_prompt}
             ])
 
+            print("Creating required files...")
             content = response if isinstance(response, str) else response.get('content', '')
             
             if content.strip() == "NO_FILES_REQUIRED":
@@ -716,3 +667,139 @@ User message: {user_input}"""
 
         except Exception as e:
             print(f"Error creating required files: {str(e)}") 
+
+    async def _parse_update_request(self, user_input: str) -> Dict[str, str]:
+        """Parse user request to determine which files need updates."""
+        parse_prompt = f"""Analyze this user request and determine which website components need to be updated.
+User request: "{user_input}"
+
+Identify changes needed for HTML, CSS, and/or JavaScript.
+Return ONLY a JSON object with these keys:
+- html: description of HTML changes needed (or null if none)
+- css: description of CSS changes needed (or null if none)
+- javascript: description of JavaScript changes needed (or null if none)
+
+Example:
+{{
+    "html": "Update the bio text and add social media links",
+    "css": "Change the color scheme to blue",
+    "javascript": null
+}}"""
+
+        try:
+            response = await self.llm.ainvoke([
+                {
+                    "role": "system",
+                    "content": "You are an expert at analyzing web development change requests. Return only valid JSON."
+                },
+                {"role": "user", "content": parse_prompt}
+            ])
+
+            content = response if isinstance(response, str) else response.get('content', '')
+            return json.loads(content)
+
+        except Exception as e:
+            print(f"Error parsing update request: {str(e)}")
+            raise
+
+    async def _update_html(self, change_description: str) -> str:
+        """Update HTML based on specific changes needed."""
+        update_prompt = f"""Update this HTML code according to the following changes:
+Change description: {change_description}
+
+Current HTML:
+{self.html}
+
+CRITICAL REQUIREMENTS:
+- ONLY modify elements specifically mentioned in the change description
+- DO NOT add any new sections or elements unless explicitly requested
+- DO NOT modify any other content
+- DO NOT change structure unless specifically asked
+- Preserve all existing content and formatting not mentioned
+- Return the complete HTML with ONLY the requested changes
+
+Return the HTML code with only the specified changes."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": """You are an HTML expert. Make ONLY the requested changes. Do not modify anything else.
+                DO NOT include:
+                - No markdown code block markers (```)
+                - No language identifiers
+                - No explanations before or after the code"""
+            },
+            {"role": "user", "content": update_prompt}
+        ])
+
+        print(f"Updated HTML: {response}")
+
+        return response if isinstance(response, str) else response.get('content', '')
+
+    async def _update_css(self, change_description: str) -> str:
+        """Update CSS based on specific changes needed."""
+        update_prompt = f"""Update this CSS code according to the following changes:
+Change description: {change_description}
+
+Current CSS:
+{self.css}
+
+CRITICAL REQUIREMENTS:
+- ONLY modify styles specifically mentioned in the change description
+- DO NOT add any new styles unless explicitly requested
+- DO NOT modify any other styles
+- DO NOT change existing structure unless specifically asked
+- Preserve all existing styles not mentioned
+- Return the complete CSS with ONLY the requested changes
+
+Return the CSS code with only the specified changes without any explanations, comments, or markdown formatting."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": """You are a CSS expert. Make ONLY the requested changes. Do not modify anything else.
+                DO NOT include:
+                - No markdown code block markers (```)
+                - No language identifiers
+                - No explanations before or after the code"""
+            },
+            {"role": "user", "content": update_prompt}
+        ])
+
+        print(f"Updated CSS: {response}")
+
+        return response if isinstance(response, str) else response.get('content', '')
+
+    async def _update_javascript(self, change_description: str) -> str:
+        """Update JavaScript based on specific changes needed."""
+        update_prompt = f"""Update this JavaScript code according to the following changes:
+Change description: {change_description}
+
+Current JavaScript:
+{self.js}
+
+CRITICAL REQUIREMENTS:
+- ONLY modify functionality specifically mentioned in the change description
+- DO NOT add any new functions unless explicitly requested
+- DO NOT modify any other functionality
+- DO NOT change existing logic unless specifically asked
+- Preserve all existing code not mentioned
+- Return the complete JavaScript with ONLY the requested changes
+
+Return the JavaScript code with only the specified changes without any explanations, comments, or markdown formatting."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": """You are a JavaScript expert. Make ONLY the requested changes. Do not modify anything else.
+                DO NOT include:
+                - No markdown code block markers (```)
+                - No language identifiers
+                - No explanations before or after the code"""
+            },
+            {"role": "user", "content": update_prompt}
+        ])
+
+        print(f"Updated JavaScript: {response}")
+
+        return response if isinstance(response, str) else response.get('content', '') 
