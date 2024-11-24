@@ -160,7 +160,7 @@ class JobApplicationAgent:
             memory=self.memory,
             verbose=True,
             handle_parsing_errors=True,
-            max_iterations=10,
+            max_iterations=5,
         )
 
         # Remove all files in temp folder for a fresh start

@@ -177,6 +177,7 @@ Structure:
    - Section header "About Me" (h2)
    - Bio paragraph
    - Section header "Get In Touch" (h2) with hyperlinked contact info
+   - Each contact method should be on a separate line
 
 Requirements:
 - Clean, semantic HTML
