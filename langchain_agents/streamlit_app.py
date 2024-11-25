@@ -12,6 +12,9 @@ import psycopg2
 from datetime import datetime
 from streamlit_option_menu import option_menu
 from PIL import Image
+from streamlit.components.v1 import html
+import glob
+import shutil
 
 # Initialize environment variables and configurations
 try:
@@ -71,8 +74,12 @@ How can I help you?"""
         # Add a new session state variable to track submitted feedback
         if 'submitted_feedbacks' not in st.session_state:
             st.session_state.submitted_feedbacks = set()
+        
+        # Add website files state
+        if 'website_files' not in st.session_state:
+            st.session_state.website_files = {}
 
-         # Create static folder for images if it doesn't exist
+        self.website_temp_dir = Path(__file__).parent.parent / "temp"
         self.static_folder = Path(__file__).parent / "static" / "images"
         self.static_folder.mkdir(parents=True, exist_ok=True)
     
@@ -259,11 +266,20 @@ How can I help you?"""
             </style>
         """, unsafe_allow_html=True)
         
-        # Add navigation menu
+        # Check if website files exist
+        website_files = self.load_website_files()
+
+        # Check if README exists
+        readme = self.load_readme()
+        
+        # Create horizontal navigation menu
+        menu_options = ["Chat", "Preview", "Feedback Analytics"]
+        menu_icons = ["chat-dots", "globe", "graph-up"]
+        
         selected = option_menu(
             menu_title=None,
-            options=["Chat", "Feedback Analytics"],
-            icons=["chat-dots", "graph-up"],
+            options=menu_options,
+            icons=menu_icons,
             menu_icon="cast",
             default_index=0,
             orientation="horizontal",
@@ -377,6 +393,106 @@ How can I help you?"""
                     # Rerun to update the UI
                     st.rerun()
 
+        elif selected == "Preview":
+            st.title("🌐 Preview")
+            if not website_files and not readme:
+                st.error("No website files or README found. Please generate a website or README first.")
+            else:
+                preview_col, explorer_col = st.columns([3, 1])
+                
+                with explorer_col:
+                    st.subheader("📁 Files")
+                    file_options = list(website_files.keys())
+                    if readme:
+                        file_options.append("README.md")
+                    selected_file = st.radio(
+                        "Select file to preview:",
+                        file_options,
+                        index=file_options.index('index.html') if 'index.html' in file_options else 0
+                    )
+                    
+                    # Download button
+                    if st.button("📥 Download All Files"):
+                        zip_path = self.website_temp_dir / "recruitree.zip"
+                        shutil.make_archive(str(zip_path.with_suffix('')), 'zip', self.website_temp_dir)
+                        
+                        with open(zip_path, 'rb') as f:
+                            st.download_button(
+                                label="Download ZIP",
+                                data=f,
+                                file_name="recruitree.zip",
+                                mime="application/zip"
+                            )
+                    
+                    # Source code viewer
+                    with st.expander("📝 Source Code", expanded=False):
+                        st.code(
+                            website_files[selected_file] if selected_file in website_files else readme,
+                            language='html' if selected_file.endswith('.html') else
+                                    'css' if selected_file.endswith('.css') else
+                                    'javascript'
+                        )
+                
+                with preview_col:
+                    st.subheader("🖥️ Preview")
+                    if selected_file.endswith('.html'):
+                        # Combine HTML with CSS and JS
+                        html_content = website_files[selected_file]
+                        
+                        # Ensure the HTML has proper head and body tags
+                        if '<head>' not in html_content:
+                            html_content = f"""
+                            <html>
+                            <head>
+                                <meta charset="UTF-8">
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            </head>
+                            <body>
+                                {html_content}
+                            </body>
+                            </html>
+                            """
+                        
+                        # Insert CSS into the HTML head
+                        css_content = """
+                        <style>
+                            {existing_css}
+                            
+                            /* Preview container styles */
+                            .preview-container {{
+                                border: 1px solid #ddd;
+                                border-radius: 8px;
+                                padding: 20px;
+                                background: white;
+                                height: 700px;
+                                overflow-y: auto
+                            }}
+                        </style>
+                        """
+                        if 'style.css' in website_files:
+                            css_content = css_content.format(existing_css=website_files['style.css'])
+                        else:
+                            css_content = css_content.format(existing_css='')
+                        
+                        html_content = html_content.replace('</head>', f'{css_content}</head>')
+                        
+                        # Insert JS into the HTML body
+                        js_content = ""
+                        if 'script.js' in website_files:
+                            js_content = f"<script>{website_files['script.js']}</script>"
+                        html_content = html_content.replace('</body>', f'{js_content}</body>')
+                        
+                        # Render the complete webpage
+                        html(html_content, height=700, scrolling=True)
+                    elif selected_file.endswith(('.png', '.jpg', '.jpeg')):
+                        st.image(website_files[selected_file], caption=selected_file)
+                    elif selected_file.endswith('.css'):
+                        st.info("CSS files can only be viewed in the Source Code section")
+                    elif selected_file.endswith('.js'):
+                        st.info("JavaScript files can only be viewed in the Source Code section")
+                    elif selected_file == "README.md":
+                        st.markdown(readme)
+            
         elif selected == "Feedback Analytics":
             # Import and run the feedback analytics page
             from pages.feedback_analytics import main as feedback_main
@@ -386,6 +502,26 @@ How can I help you?"""
     def generate_user_id() -> str:
         """Generate a unique user ID for the session."""
         return str(uuid.uuid4())
+
+    def load_website_files(self):
+        """Load all website files from temp directory."""
+        website_files = {}
+        for file_path in glob.glob(str(self.website_temp_dir / "**/*.*"), recursive=True):
+            if file_path.endswith(('.html', '.css', '.js')):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    relative_path = Path(file_path).relative_to(self.website_temp_dir)
+                    website_files[str(relative_path)] = f.read()
+            elif file_path.endswith(('.png', '.jpg', '.jpeg')):
+                website_files[str(Path(file_path).relative_to(self.website_temp_dir))] = file_path
+        return website_files
+    
+    def load_readme(self):
+        """Load the README file from temp directory."""
+        readme_path = self.website_temp_dir / "README.md"
+        if readme_path.exists():
+            with open(readme_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        return None
 
 if __name__ == "__main__":
     app = StreamlitUI()
