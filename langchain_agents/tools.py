@@ -227,9 +227,15 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
         return f"Error processing request: {str(e)}"
 
 @tool(args_schema=GitHubReadmeInput)
-def generate_github_readme(query: Optional[str] = None, resume_content: Optional[str] = None, github_token: Optional[str] = None, llm: Optional[object] = None) -> str:
+def generate_github_readme(query: Optional[str] = None, resume_content: str = None, github_token: str = None, llm: Optional[object] = None) -> str:
     """Generate a GitHub README file based on resume content.
     If you are not provided with a resume text content, you can provide a description or additional instructions for content generation.
+
+    Args:
+        query: Optional description or additional instructions for content generation
+        resume_content: String containing resume text content
+        github_token: GitHub personal access token
+        llm: Optional LLM instance to use (will create new one if not provided)
     """
     llm = llm or TogetherLLM(temperature=0.7)
     try:

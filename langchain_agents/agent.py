@@ -41,7 +41,7 @@ Instructions:
 
 2. If you need clarification or additional information, ask the user for more information without using any tools and directly ask the user using the "Final Answer" tool.
 
-3. If you have enough information to proceed, determine whether you need to use a tool or can provide a direct answer.
+3. If you have enough information to proceed, determine whether you need to use a tool or can provide a direct answer. Make sure that you are not missing any input parameters for the tools.
 
 4. If a tool is needed, use the following JSON format to specify the tool and its input:
 
