@@ -16,14 +16,14 @@ class Conversation:
     design_preferences: Dict[str, Any]
     generated_code: Optional[Dict[str, str]] = None
 
-class HomeScreenGeneratorAgent:
-    """Agent specifically designed for generating personal home screens."""
+class HomeScreenGenerator:
+    """Generates the home/about page content."""
     
     def __init__(self):
         self.llm = TogetherLLM(
             model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
             temperature=0,
-            max_tokens=4000
+            max_tokens=2000
         )
         self.personal_info = {}
         self.html = None

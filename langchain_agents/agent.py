@@ -1,7 +1,7 @@
 from langchain.agents import AgentExecutor, create_structured_chat_agent
 from langchain.memory import ConversationBufferMemory
 from tools import (
-    generate_home_screen,
+    route_website_request,
     optimize_github_profile,
     publish_to_github_pages,
     get_current_github_readme,
@@ -135,7 +135,7 @@ class JobApplicationAgent:
         
         # Initialize tools with logging wrapper
         self.tools = [
-            self._create_logging_tool(generate_home_screen),
+            self._create_logging_tool(route_website_request),
             self._create_logging_tool(optimize_github_profile),
             self._create_logging_tool(publish_to_github_pages),
             self._create_logging_tool(get_current_github_readme),
