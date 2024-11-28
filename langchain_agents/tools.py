@@ -1,5 +1,5 @@
 from langchain.tools import tool
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 from custom_together_llm import TogetherLLM
 from github import Github
 from pydantic import BaseModel, Field
@@ -525,22 +525,34 @@ class WebsiteRequestInput(BaseModel):
 @tool
 async def route_website_request(
     user_input: str,
-    resume_content: Optional[str] = None,
-    llm: Optional[object] = None
+    resume_content: str,
 ) -> str:
     """
-    EVERY website request goes through here. This tool handles routing all website-related requests 
-    to the appropriate generator (home page, education page, navigation, shared styles, etc.).
+    Routes all website-related requests to appropriate generators.
+
+    Args:
+        user_input (str): The user's request or preferences (e.g., "Create a dark theme website")
+        resume_content (str): The content of the resume to use for the website
+
+    Returns:
+        str: Status message about what was created/updated
     """
-        
+
     try:
         router = await get_router(resume_content)
         
         if not PageRouter.is_initialized():
             print("Initializing with user input:", user_input)
+            # Generate shared elements
             await router.base_generator.generate_initial_shared_elements(user_input)
+            # Generate home page
+            
+            await router.home_generator.generate_home_screen(
+                user_input=user_input,
+            )
+
             PageRouter.set_initialized()
-            return "Initial website design created based on your preferences!"
+            return "Initial website design and home page created based on your preferences!"
         
         return await router.handle_request(user_input)
         

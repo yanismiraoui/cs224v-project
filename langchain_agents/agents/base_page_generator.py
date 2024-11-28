@@ -23,6 +23,9 @@ class BasePageGenerator:
             self.shared_css = None
             self.shared_js = None
             self.nav_items = None
+            self.nav_html = None
+            self.nav_css = None
+            self.nav_js = None
             self.initialized = True
 
     @classmethod
@@ -81,8 +84,18 @@ Return ONLY a list of section names, one per line."""
     async def generate_initial_shared_elements(self, user_input: str) -> None:
         """Generate initial shared CSS and JS based on user preferences."""
         try:
+            # First parse navigation sections from resume
+            if not self.nav_items:
+                await self.parse_nav_sections()
+            
+            # Generate navigation components
+            await self.generate_navigation()
+            
+            # Generate shared CSS and JS
             self.shared_css = await self._generate_shared_css(user_input)
             self.shared_js = await self._generate_shared_js(user_input)
+            
+            # Save all files
             await self._save_shared_files()
         except Exception as e:
             print(f"Error generating shared elements: {str(e)}")
@@ -409,3 +422,185 @@ Return ONLY the element name: 'navigation', 'css', or 'javascript'."""
                     return f"Unknown shared element: {element}"
         except Exception as e:
             return f"Error updating {element}: {str(e)}" 
+
+    async def generate_navigation(self) -> None:
+        """Generate all navigation components (HTML, CSS, JS) in sequence."""
+        if not self.nav_items:
+            await self.parse_nav_sections()
+            
+        # Generate in sequence so each can reference previous components
+        self.nav_html = await self._generate_nav_html()
+        self.nav_css = await self._generate_nav_css()
+        self.nav_js = await self._generate_nav_js()
+        
+        # Save all navigation files
+        await self._save_shared_files()
+
+    async def _generate_nav_html(self) -> str:
+        """Generate navigation HTML with navigation-specific CSS and JS references."""
+        nav_prompt = f"""Create a complete HTML document for the navigation bar with these requirements:
+
+1. Document Structure:
+   - Complete HTML5 document structure
+   - Include navigation-specific CSS and JS references
+   - Meta tags for proper rendering
+
+2. Head Section:
+   - Charset UTF-8
+   - Viewport meta tag
+   - MUST include: <link rel="stylesheet" href="navigation.css">
+
+3. Navigation Content:
+   - Nav element with class="nav"
+   - Container div with class="nav-container"
+   - Unordered list with class="nav-list"
+   - List items with class="nav-item" and data-page attributes
+   - Links with class="nav-link"
+
+4. Navigation Items:
+{self.nav_items}
+
+5. Mobile Menu:
+   - Include mobile menu container
+   - Add necessary structure for mobile responsiveness
+
+6. Scripts:
+   - MUST include: <script src="navigation.js"></script> at the end of body
+
+Return a complete HTML document with navigation-specific references.
+"""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": """You are an HTML expert. Return a complete HTML document with navigation-specific references.
+                MUST include:
+                - <link rel="stylesheet" href="navigation.css"> in head
+                - <script src="navigation.js"></script> at end of body
+                DO NOT include:
+                - No markdown code block markers
+                - No language identifiers
+                - No explanations
+                - No other CSS/JS references"""
+            },
+            {"role": "user", "content": nav_prompt}
+        ])
+
+        return response if isinstance(response, str) else response.get('content', '')
+
+    async def _generate_nav_css(self) -> str:
+        css_prompt = f"""Create CSS specifically for this navigation HTML:
+
+{self.nav_html}
+
+Requirements:
+1. Position at the top of the website:
+   - Fixed position
+   - Full width background
+   - Top: 0
+
+2. Horizontal layout:
+   - Display nav items in a single row
+   - Use flexbox with justify-content: center
+   - Equal spacing between items
+   - No bullet points or list styling
+
+3. Visual style:
+   - Clean background color
+   - Padding: 1rem vertical, 2rem horizontal
+   - Border-bottom for separation
+   - Container width: 80% max-width
+   - Centered within the page
+
+4. Nav items:
+   - Display: inline-block
+   - Horizontal padding between items
+   - No text decoration on links
+   - Smooth hover transitions
+   - Modern font styling
+
+5. Responsive design:
+   - Collapse to hamburger on mobile
+   - Maintain horizontal center on all screens
+   - Smooth mobile menu transitions
+   - Proper spacing in both desktop/mobile
+
+IMPORTANT: Use the exact classes and IDs from the provided HTML above.
+Return ONLY the CSS code."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "You are a CSS expert. Return only clean CSS code."
+            },
+            {"role": "user", "content": css_prompt}
+        ])
+        return self._clean_code_block(response)
+
+    async def _generate_nav_js(self) -> str:
+        js_prompt = f"""Create JavaScript for this navigation structure:
+
+HTML:
+{self.nav_html}
+
+CSS:
+{self.nav_css}
+
+Requirements:
+1. Mobile menu toggle
+2. Smooth scrolling to sections
+3. Active state management
+4. Window resize handling
+5. Accessibility support
+6. Event delegation for efficiency
+7. Error handling
+8. Clean, modern ES6+ syntax
+9. Menu item hover effects:
+   - Add highlight class on hover
+   - Remove highlight when mouse leaves
+   - Smooth transition for highlight effect
+   - Work for both desktop and mobile views
+
+IMPORTANT: Use the exact classes and IDs from the provided HTML and CSS above.
+Return ONLY the JavaScript code."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "You are a JavaScript expert. Return only clean JavaScript code."
+            },
+            {"role": "user", "content": js_prompt}
+        ])
+        return self._clean_code_block(response)
+
+    async def _save_shared_files(self) -> None:
+        """Save all shared files including navigation components."""
+        try:
+            temp_dir = "temp"
+            os.makedirs(temp_dir, exist_ok=True)
+
+            # Save shared files
+            if self.shared_css:
+                with open(os.path.join(temp_dir, "shared.css"), "w") as f:
+                    f.write(self.shared_css.strip())
+
+            if self.shared_js:
+                with open(os.path.join(temp_dir, "shared.js"), "w") as f:
+                    f.write(self.shared_js.strip())
+
+            # Save navigation files
+            if self.nav_html:
+                with open(os.path.join(temp_dir, "navigation.html"), "w") as f:
+                    f.write(self.nav_html.strip())
+                    
+            if self.nav_css:
+                with open(os.path.join(temp_dir, "navigation.css"), "w") as f:
+                    f.write(self.nav_css.strip())
+                    
+            if self.nav_js:
+                with open(os.path.join(temp_dir, "navigation.js"), "w") as f:
+                    f.write(self.nav_js.strip())
+
+        except Exception as e:
+            print(f"Error saving shared files: {str(e)}")
+            raise 

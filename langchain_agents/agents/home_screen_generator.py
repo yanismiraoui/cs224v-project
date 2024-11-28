@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import os
 from PIL import Image
+from .base_page_generator import BasePageGenerator
 
 @dataclass
 class Conversation:
@@ -16,15 +17,11 @@ class Conversation:
     design_preferences: Dict[str, Any]
     generated_code: Optional[Dict[str, str]] = None
 
-class HomeScreenGenerator:
+class HomeScreenGenerator(BasePageGenerator):
     """Generates the home/about page content."""
     
     def __init__(self):
-        self.llm = TogetherLLM(
-            model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
-            temperature=0,
-            max_tokens=2000
-        )
+        super().__init__()
         self.personal_info = {}
         self.html = None
         self.css = None
@@ -32,73 +29,56 @@ class HomeScreenGenerator:
         self.profile_pic_path = "static/images/profile_pic.jpg"
 
     async def generate_home_screen(self, 
-                                 user_input: str,
-                                 resume_content: str = None) -> str:
+                                 user_input: str) -> str:
         """Generate the home screen based on user input."""
         try:
-            # 1. Parse resume if provided
-            if resume_content:
-                parsed_info = await self._parse_resume(resume_content)
-                if parsed_info:
-                    self.personal_info = parsed_info
-                    print("Successfully extracted info from resume")
-                    
-                sections = await self._parse_resume_sections(resume_content)
-                if sections:
-                    self.personal_info['sections'] = sections
-                    print("Successfully extracted sections from resume")
+            # Parse resume for personal info
+            parsed_info = await self._parse_resume()
+            if parsed_info:
+                self.personal_info = parsed_info
+                print("Successfully extracted info from resume")
 
-            # 2. Parse user input for any personal information
+            # Parse user input for any additional preferences
             user_info = await self._parse_user_input(user_input)
             if user_info:
-                # Update personal_info with any new information
                 self.personal_info.update({
                     k: v for k, v in user_info.items() if v
                 })
                 print(f"Updated personal information from user input: {user_info}")
 
-            # 3. Check for missing required info
-            required_fields = ['name', 'role', 'bio', 'contact']
-            missing_fields = [
-                field for field in required_fields 
-                if not self.personal_info.get(field)
-            ]
+            # # Check for missing required info
+            # required_fields = ['name', 'role', 'bio', 'contact']
+            # missing_fields = [
+            #     field for field in required_fields 
+            #     if not self.personal_info.get(field)
+            # ]
             
-            if missing_fields:
-                return {
-                    "status": "missing_info",
-                    "missing_fields": missing_fields,
-                    "message": f"""I need your {missing_fields[0]} to continue.
+            # if missing_fields:
+            #     return {
+            #         "status": "missing_info",
+            #         "missing_fields": missing_fields,
+            #         "message": f"I need your {missing_fields[0]} to continue."
+            #     }
 
-Please type it directly (e.g., "My {missing_fields[0]} is...")"""
-                }
-
-            # 4. Generate or update design
-            response = None
+            # Generate or update design
             if not any([self.html, self.css, self.js]):
                 await self._generate_initial_design(user_input)
             else:
-                print("Updating design...")
                 await self._update_design(user_input)
 
-            # If we have a valid response, save the files
+            # Save files if generated successfully
             if all([self.html, self.css, self.js]):
-            # Save files to temp folder
                 temp_dir = "temp"
                 os.makedirs(temp_dir, exist_ok=True)
 
                 with open(os.path.join(temp_dir, "index.html"), "w") as f:
                     f.write(self.html.strip())
-                
                 with open(os.path.join(temp_dir, "style.css"), "w") as f:
                     f.write(self.css.strip())
-                
                 with open(os.path.join(temp_dir, "script.js"), "w") as f:
                     f.write(self.js.strip())
 
-                # await self._check_and_create_required_files(self.js, temp_dir)
-                
-                return "Home page has been generated and saved successfully! You can now publish it to GitHub Pages."
+                return "Home page has been generated and saved successfully!"
             else:
                 return "Failed to generate all required code components."
 
@@ -143,32 +123,25 @@ Please type it directly (e.g., "My {missing_fields[0]} is...")"""
             - Profile Picture: Include an img tag referencing imgs/profile_pic.jpg
             - Place profile picture prominently in the layout
             - Add proper alt text for accessibility"""
-        
-        sections = self.personal_info.get('sections', [])
-        nav_links = []
-        for section in sections:
-            section_filename = section.lower().replace(" ", "_") + ".html"
-            if section.lower() == "about me":
-                nav_links.append('- "About Me" links to index.html')
-            else:
-                nav_links.append(f'- "{section}" links to {section_filename}')
-
 
         html_prompt = f"""Create a clean HTML file for a personal website with these requirements:
 
-Content:
+Content (only generate sections for provided information, skip if not provided):
 - Name: {self.personal_info.get('name')}
 - Role: {self.personal_info.get('role')}
 - Bio: {self.personal_info.get('bio')}
 - Contact: {self.personal_info.get('contact')}
+
+Note: Generate HTML sections ONLY for the information that is provided above. If any field is None or empty, do not create its corresponding section.
+
 {profile_pic_section}
 
 Structure:
-1. Navigation bar with:
-  - The "About Me" link MUST point to index.html
-  - Each nav item MUST be an <a> tag with href to its corresponding HTML file
-  - Navigation links MUST follow this EXACT pattern (except for the "About Me" link):
-     {chr(10).join(nav_links)}
+1. Navigation:
+   - Add iframe at top of body: <iframe src="navigation.html" frameborder="0" id="nav-frame"></iframe>
+   - Add link to navigation.css in head section
+   - Add link to navigation.js before end of body
+   - The iframe should span full width and adjust height to content
 
 2. Main content:
    {f'- Profile picture with class="profile-pic"' if profile_pic_exists else ''}
@@ -187,8 +160,10 @@ Requirements:
 - Link to external scripts (particles.js, gsap)
 - MUST include link to style.css in the head section
 - MUST include link to script.js at the end of body
+- MUST include link to navigation.css in head section
+- MUST include link to navigation.js before end of body
 
-Return ONLY the HTML code with proper CSS and JS file references without any explanations, comments, or markdown formatting. """
+Return ONLY the HTML code with proper CSS and JS file references without any explanations, comments, or markdown formatting."""
 
         response = await self.llm.ainvoke([
             {
@@ -196,9 +171,10 @@ Return ONLY the HTML code with proper CSS and JS file references without any exp
                 "content": """You are an HTML expert. Return only clean, semantic HTML code.
                 DO NOT include:
                 - No markdown code block markers (```)
-            - No language identifiers
-            - No explanations before or after the code
-            """
+                - No language identifiers
+                - No explanations before or after the code
+                - DO NOT generate navigation HTML, only include the iframe
+                """
             },
             {"role": "user", "content": html_prompt}
         ])
@@ -206,159 +182,95 @@ Return ONLY the HTML code with proper CSS and JS file references without any exp
         return response if isinstance(response, str) else response.get('content', '')
 
     async def _generate_css(self, html: str) -> str:
-        """Generate CSS file based on HTML structure."""
-        # Check for profile picture in temp/imgs folder
-        profile_pic_exists = os.path.exists(os.path.join("temp", "imgs", "profile_pic.jpg"))
+        """Generate CSS file based on HTML structure and shared template."""
+        # Get base styles from BasePageGenerator
+        base_css = self.shared_css
+        
+        # Check for profile picture
+        profile_pic_exists = os.path.exists("imgs/profile_pic.jpg")
         
         profile_pic_section = """
-2. Profile Picture Styling:
-   - Set max-width: 200px
-   - Set max-height: 200px
-   - Create circular profile picture with border-radius: 50%
-   - Add white border: 3px solid #ffffff
-   - Use object-fit: cover to maintain aspect ratio
-   - Position on the right side of the content
-   - Add margin-left for spacing from text
-   - Add subtle box shadow
-   - Add responsive sizing for mobile devices""" if profile_pic_exists else ""
+        Profile Picture Styling:
+        - Set max-width: 200px
+        - Set max-height: 200px
+        - Create circular profile picture
+        - Add white border
+        - Use object-fit: cover
+        - Position on the right side
+        - Add subtle box shadow
+        - Add responsive sizing""" if profile_pic_exists else ""
 
-        css_prompt = f"""Create clean CSS for this HTML structure:
+        css_prompt = f"""Enhance this base CSS with additional styles specific to the home page.
+Base CSS:
+{base_css}
 
+HTML to style:
 {html}
 
-Style Requirements:
-1. Text Styling:
-   - All text must be left-aligned
-   - Clear headers
-   - Clean typography
-   - Max-width: 600px for text blocks
-   - Ensure text CONTRASTS with dark background
+Additional requirements:
+1. Keep ALL existing styles from base CSS
+2. Add styles ONLY for elements not covered in base CSS
+3. Maintain consistent:
+   - Color scheme
+   - Typography
+   - Spacing patterns
+   - Animation timings
 
 {profile_pic_section}
 
-3. Colors and Visibility:
-   - Text must be clearly visible (light color on dark, dark color on light)
-   - Subtle hover effects for links
-   - NO boxes or containers
-   - Content directly on particles background
-
-4. Spacing:
-   - Generous margins between sections
-   - Proper line height for readability
-   - Comfortable padding where needed
-
-5. Critical Requirements:
-   - Style all HTML elements present in the code
-   - Ensure navigation is centered and properly spaced
-   - Make contact links clearly clickable
-   - Keep particles visible behind content
-   - NO background colors on content sections
-   - Make profile picture container centered on page
-
-6. Responsive Design:
-   - Profile picture and content should scale down on mobile
-   - Ensure proper spacing on all devices
-
-Return ONLY the CSS code that matches this HTML structure without any explanations, comments, or markdown formatting."""
+Return the complete CSS including base styles and new additions."""
 
         response = await self.llm.ainvoke([
             {
                 "role": "system",
-                "content": """You are a CSS expert. Return only clean, efficient CSS code. Include specific sizing for profile pictures and ensure responsive design.
-            DO NOT include:
-            - No markdown code block markers (```)
-            - No language identifiers
-            - No explanations before or after the code
-            """
+                "content": """You are a CSS expert. 
+                - Preserve ALL base CSS
+                - Add only new, non-conflicting styles
+                - Maintain design consistency
+                DO NOT include:
+                - No markdown formatting
+                - No explanations"""
             },
             {"role": "user", "content": css_prompt}
         ])
 
-        # Add specific profile picture styles if they're missing from the LLM response
-        css_content = response if isinstance(response, str) else response.get('content', '')
-        
-        if profile_pic_exists and ".profile-pic" not in css_content:
-            profile_pic_css = """
-/* Profile Picture Styles */
-.profile-pic-container {
-    width: 200px;
-    height: 200px;
-    margin: 2rem auto;
-    overflow: hidden;
-    border-radius: 50%;
-    border: 3px solid #ffffff;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-}
-
-.profile-pic {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-@media (max-width: 768px) {
-    .profile-pic-container {
-        width: 150px;
-        height: 150px;
-        margin: 1.5rem auto;
-    }
-}
-"""
-            css_content += profile_pic_css
-
-        return css_content
+        return response if isinstance(response, str) else response.get('content', '')
 
     async def _generate_js(self, html: str, css: str) -> str:
-        """Generate JavaScript file based on HTML and CSS."""
-        js_prompt = f"""Create JavaScript for this HTML and CSS:
+        """Generate JavaScript file based on HTML, CSS, and shared template."""
+        # Get base JS from BasePageGenerator
+        base_js = self.shared_js
+        
+        js_prompt = f"""Enhance this base JavaScript with additional functionality specific to the home page.
+Base JavaScript:
+{base_js}
 
-HTML:
+HTML to enhance:
 {html}
 
-CSS:
-{css}
-
 Requirements:
-1. Particles Background:
-   - Initialize particles.js with an elegant theme
-   - Ensure particles are visible but subtle
-   - Include proper error handling
+1. Keep ALL existing functionality from base JS
+2. Maintain:
+   - Particle effects
+   - Animation patterns
+   - Event handling structure
+3. Add ONLY new functionality for:
+   - Home-page specific animations
+   - Additional interactions
+   - Page-specific features
 
-2. Text Animations:
-   - Use GSAP for animations
-   - Create fade-in animations for all main content elements
-   - Include subtle movement (like slide up)
-   - Use appropriate timing and easing
-   - Maintain professional, smooth transitions
-   - Define ALL animation configurations within this file
-   - DO NOT reference external animation configurations
-
-3. Error Handling:
-   - Check if elements exist before animating
-   - Graceful fallbacks
-   - Console warnings for missing elements
-
-4. Performance:
-   - Initialize after DOM content loaded
-   - Optimize animation performance
-   - Ensure smooth interaction between particles and animations
-
-Return ONLY the JavaScript code without any explanations, comments, or markdown formatting."""
+Return the complete JavaScript including base code and new additions."""
 
         response = await self.llm.ainvoke([
             {
                 "role": "system",
-                "content": """You are a JavaScript expert who ensures:
-- Dynamic, responsive animations
-- Professional particle effects
-- Smooth performance
-- Proper error handling
-Generate code that works with the provided HTML structure.
-
-DO NOT include:
-- No markdown code block markers (```)
-- No language identifiers
-- No explanations before or after the code"""
+                "content": """You are a JavaScript expert.
+                - Preserve ALL base JavaScript
+                - Add only new, non-conflicting functionality
+                - Maintain consistent patterns
+                DO NOT include:
+                - No markdown formatting
+                - No explanations"""
             },
             {"role": "user", "content": js_prompt}
         ])
@@ -389,10 +301,14 @@ DO NOT include:
             print(f"Error updating design: {str(e)}")
             raise
 
-    async def _parse_resume(self, resume_content: str) -> Optional[Dict[str, Any]]:
-        """Parse resume for both personal info and sections."""
+    async def _parse_resume(self) -> Optional[Dict[str, Any]]:
+        """Parse resume for personal info only."""
         try:
-            # First attempt - explicit extraction with more guidance
+            resume_content = self.get_resume()
+            if not resume_content:
+                print("No resume content found in parent class")
+                return None
+
             info_response = await self.llm.ainvoke([
                 {
                     "role": "system",
@@ -404,27 +320,19 @@ DO NOT include:
                 {"role": "user", "content": f"""Extract these details from the resume:
 
 1. Full name (usually at top)
-2. Current role, following these rules:
-   - If they're a student: use "[Degree] Student at [University]"
-   - If employed: use most recent "[Job Title] at [Company]"
-   - Examples: 
-     * "M.S. Computer Science Student at Stanford University"
-     * "Software Engineer at Google"
-     * "Data Science Intern at Figma"
+2. Current role, following the rules above
 3. Contact info (email, phone, LinkedIn)
-4. Main section headers
 
 Format EXACTLY like this:
 name: John Smith
 role: M.S. Computer Science Student at Stanford University
 contact: email, phone, linkedin
-sections: Education, Experience, Skills, Projects
 
 Resume text:
 {resume_content}"""}
             ])
 
-            # Parse the response
+            # Rest of the method remains the same...
             info_text = info_response['content'] if isinstance(info_response, dict) else info_response
             
             info_dict = {}
@@ -468,63 +376,45 @@ Resume:
             bio_text = bio_text.strip().strip('"')
 
             # Store the information
-            self.personal_info = {
+            return {
                 "name": info_dict.get('name', ''),
                 "role": info_dict.get('role', ''),
                 "contact": info_dict.get('contact', ''),
-                "bio": bio_text.strip(),
-                "sections": [s.strip() for s in info_dict.get('sections', '').split(',') if s.strip()] or 
-                           ['Education', 'Experience', 'Skills', 'Projects']
+                "bio": bio_text.strip()
             }
-
-            # Verify we have all required fields
-            missing_fields = []
-            if not self.personal_info['name']:
-                missing_fields.append('name')
-            if not self.personal_info['role']:
-                missing_fields.append('role')
-            if not self.personal_info['contact']:
-                missing_fields.append('contact')
-
-            if missing_fields:
-                print(f"Missing information: {', '.join(missing_fields)}")
-                return None
-
-            print(f"Successfully parsed resume information: {self.personal_info}")
-            return self.personal_info
 
         except Exception as e:
             print(f"Resume parsing error: {str(e)}")
             return None
 
-    async def _parse_resume_sections(self, resume_content: str) -> List[str]:
-        """Extract major section headers from resume."""
-        section_prompt = f"""Extract the major section headers from this resume. 
-Return ONLY the section names in a comma-separated list.
-Common sections include: Education, Experience, Skills, Projects, Publications, etc.
-Do not include small subsections or individual entries.
+#     async def _parse_resume_sections(self, resume_content: str) -> List[str]:
+#         """Extract major section headers from resume."""
+#         section_prompt = f"""Extract the major section headers from this resume. 
+# Return ONLY the section names in a comma-separated list.
+# Common sections include: Education, Experience, Skills, Projects, Publications, etc.
+# Do not include small subsections or individual entries.
 
-Resume:
-{resume_content}"""
+# Resume:
+# {resume_content}"""
 
-        try:
-            response = await self.llm.ainvoke([
-                {
-                    "role": "system",
-                    "content": "Extract main section headers from resumes. Return only a comma-separated list."
-                },
-                {"role": "user", "content": section_prompt}
-            ])
+#         try:
+#             response = await self.llm.ainvoke([
+#                 {
+#                     "role": "system",
+#                     "content": "Extract main section headers from resumes. Return only a comma-separated list."
+#                 },
+#                 {"role": "user", "content": section_prompt}
+#             ])
 
-            # Get sections from response
-            content = response['content'] if isinstance(response, dict) else response
-            sections = [s.strip() for s in content.split(',')]
-            self.resume_sections = sections
-            return sections
+#             # Get sections from response
+#             content = response['content'] if isinstance(response, dict) else response
+#             sections = [s.strip() for s in content.split(',')]
+#             self.resume_sections = sections
+#             return sections
 
-        except Exception as e:
-            print(f"Section parsing error: {str(e)}")
-            raise
+#         except Exception as e:
+#             print(f"Section parsing error: {str(e)}")
+#             raise
 
     def _format_conversation_history(self) -> str:
         """Format recent conversation history."""
