@@ -103,6 +103,7 @@ If you don't need to use tools or lack sufficient information, respond directly 
 Be thorough in your responses and always aim to provide value to the user in their job application process.
 If the user does not have a GitHub profile or README, you can propose to create one based on their resume.
 If the user asks for a website, include the full, correctly formatted website code in your final answer. This is very important.
+Remember do not mention tools names but instead mention what you can do with the tools.
    """),
 ("placeholder", "{chat_history}"),
 ("human", """{input}

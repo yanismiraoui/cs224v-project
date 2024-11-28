@@ -7,9 +7,9 @@ import requests
 import json
 from bs4 import BeautifulSoup
 import random
-from agents.home_screen_generator import HomeScreenGenerator
 import os
-from agents.page_router import get_router, PageRouter
+from agents.website_creation_agent import WebsiteCreationAgent
+from pathlib import Path
 
 def parse_resume(resume_content: str, llm: Optional[object] = None) -> str:
     """
@@ -82,7 +82,6 @@ class GitHubReadmeInput(BaseModel):
     llm: Optional[object] = Field(None, description="Optional LLM instance to use")
 
 
-home_screen_agent = HomeScreenGenerator()
 @tool
 async def generate_home_screen(
     user_input: str,
@@ -511,40 +510,79 @@ def publish_to_github_readme(github_token: str, readme_content: Optional[str] = 
     except Exception as e:
         return f"Error publishing README: {str(e)}"
 
-
-# Module-level singleton and initialization state
-_router_instance = None
-_initialized = False
-
-class WebsiteRequestInput(BaseModel):
-    """Input schema for website request routing."""
-    user_input: str = Field(..., description="The user's request or preferences")
-    resume_content: Optional[str] = Field(None, description="Optional resume content")
-    llm: Optional[object] = Field(None, description="Optional LLM instance")
-
 @tool
-async def route_website_request(
-    user_input: str,
-    resume_content: Optional[str] = None,
-    llm: Optional[object] = None
-) -> str:
+async def route_website_request(user_input: str, resume_content: Optional[str] = None) -> str:
     """
-    EVERY website request goes through here. This tool handles routing all website-related requests 
-    to the appropriate generator (home page, education page, navigation, shared styles, etc.).
+    Route website creation and modification requests to the appropriate handler.
     """
-        
+    website_agent = WebsiteCreationAgent()
+    llm = TogetherLLM(temperature=0.1)
+    
+    temp_dir = Path("temp")
+    has_existing_website = temp_dir.exists() and any(temp_dir.iterdir())
+    
+    routing_prompt = """Analyze this website-related request and determine:
+    1. Is this a modification request or a new website creation request?
+    2. If it's a modification, which page needs to be modified?
+
+    These files are currently available for the website: {files}
+    
+    Return ONLY a JSON response in this exact format:
+    {{
+        "type": "modification" or "creation",
+        "page": "page_name" or null,
+        "confidence": 0.0 to 1.0
+    }}
+    
+    Example pages: home, about, experience, projects, contact, skills, portfolio
+    
+    If you're not confident (below 0.7), return a lower confidence score.
+    If no specific page is mentioned for modification, return null for page.
+    """
+    
     try:
-        router = await get_router(resume_content)
+        files_list = list(temp_dir.glob("*")) if temp_dir.exists() else []
+        formatted_prompt = routing_prompt.format(files=files_list)
         
-        if not PageRouter.is_initialized():
-            print("Initializing with user input:", user_input)
-            await router.base_generator.generate_initial_shared_elements(user_input)
-            PageRouter.set_initialized()
-            return "Initial website design created based on your preferences!"
+        response = llm.invoke([
+            {"role": "system", "content": formatted_prompt},
+            {"role": "user", "content": user_input}
+        ])
         
-        return await router.handle_request(user_input)
+        routing_result = json.loads(response)
         
+        # Handle low confidence cases
+        if routing_result["confidence"] < 0.7:
+            if routing_result["type"] == "modification":
+                return "I'm not sure which page you want to modify. Please specify the page (e.g., home, about, experience, etc.)"
+            else:
+                return "I'm not sure if you want to create a new website or modify an existing one. Please clarify your request."
+        
+        # Handle modification requests
+        if routing_result["type"] == "modification":
+            if not has_existing_website:
+                return "No existing website found to modify. Please create a website first."
+                
+            if not routing_result["page"]:
+                return "Please specify which page you want to modify (e.g., home, about, experience, etc.)"
+                
+            result = await website_agent.modify_page(routing_result["page"], user_input)
+            return f"Modified {routing_result['page']} page: {result['message']}. Files are viewable in the preview tab."
+        
+        # Handle creation requests
+        else:
+            if not resume_content:
+                return "Please provide a resume or detailed information to create your website."
+                
+            result = await website_agent.create_website(resume_content)
+            
+            if result["status"] == "success":
+                sections = ", ".join(result["sections"])
+                return f"Created website with sections: {sections}. Files are viewable in the preview tab and able to be published to GitHub Pages."
+            else:
+                return f"Error creating website: {result['message']}"
+                
+    except json.JSONDecodeError:
+        return "Error processing your request. Please try again with a clearer instruction."
     except Exception as e:
-        print(f"Error processing request: {str(e)}")
-        print(f"Error type: {type(e)}")
-        raise
+        return f"Error: {str(e)}"

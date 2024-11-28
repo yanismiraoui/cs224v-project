@@ -34,6 +34,7 @@ class TogetherLLM(LLM):
         client = Together()
 
         # Format the prompt for chat
+        print(f"Prompt: {prompt}")
         response = client.chat.completions.create(
             model=self.model_name,
             messages=[
@@ -44,6 +45,7 @@ class TogetherLLM(LLM):
             temperature=self.temperature,
         )
         output = response.choices[0].message.content
+        print(f"Output: {output}")
         return output
 
     @property
