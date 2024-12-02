@@ -44,7 +44,6 @@ class PageRouter:
             self.llm = TogetherLLM(
                 model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
                 temperature=0,
-                max_tokens=2000
             )
             self.base_generator = BasePageGenerator()
             self.home_generator = HomeScreenGenerator()

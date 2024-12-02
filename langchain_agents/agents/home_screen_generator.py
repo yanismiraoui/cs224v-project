@@ -23,7 +23,6 @@ class HomeScreenGenerator:
         self.llm = TogetherLLM(
             model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
             temperature=0,
-            max_tokens=2000
         )
         self.personal_info = {}
         self.html = None

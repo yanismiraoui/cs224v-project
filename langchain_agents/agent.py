@@ -6,7 +6,8 @@ from tools import (
     publish_to_github_pages,
     get_current_github_readme,
     generate_github_readme,
-    publish_to_github_readme
+    publish_to_github_readme,
+    generate_website_content
 )
 from langchain_core.prompts import ChatPromptTemplate
 from typing import Optional, Dict, Any, List, Union
@@ -135,7 +136,7 @@ class JobApplicationAgent:
         
         # Initialize tools with logging wrapper
         self.tools = [
-            self._create_logging_tool(route_website_request),
+            self._create_logging_tool(generate_website_content),
             self._create_logging_tool(optimize_github_profile),
             self._create_logging_tool(publish_to_github_pages),
             self._create_logging_tool(get_current_github_readme),

@@ -133,6 +133,8 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
     # Initialize LLM with conservative temperature for reliable output
     llm = llm or TogetherLLM(temperature=0.1)
 
+    profile_pic_exists = os.path.exists(os.path.join("temp", "imgs", "profile_pic.jpg"))
+
     # Parse resume if provided
     parsed_resume = None
     if isinstance(resume_content, str):
@@ -172,7 +174,13 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
         - professional-corporate: Elegant animations and clean design
         - playful-interactive: Add game-like elements and playful interactions
 
-        Required sections (but this is not exhaustive):
+        Required sections and content:
+        - Main content including:
+          {f'- Profile picture with specific styling requirements: max-width/height 200px, circular shape, white border, right-aligned' if profile_pic_exists else ''}
+          - Name (h1)
+          - Role (professional subtitle)
+          - Bio paragraph
+          - "Get in Touch" section with hyperlinked contact info
         - Professional Summary
         - Experience
         - Skills & Expertise
@@ -184,7 +192,50 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
         - Add meaningful animations and transitions
         - Make it interactive and engaging
         - Ensure accessibility
-        
+        - Clean, semantic HTML
+        {f'''- Profile picture requirements:
+          - Use class="profile-pic"
+          - Set src="imgs/profile_pic.jpg"
+          - Max dimensions: 200x200px
+          - Circular shape with border-radius: 50%
+          - White border: 3px solid #ffffff
+          - Object-fit: cover for aspect ratio
+          - Right-aligned positioning
+          - Subtle box shadow
+          - Responsive sizing (max 150px on mobile)''' if profile_pic_exists else ''}
+        - Proper indentation
+        - Include particles-js container
+        - Link to external scripts (particles.js, gsap)
+        - MUST include link to style.css in the head section
+        - MUST include link to script.js at the end of body
+
+        JavaScript Implementation Requirements:
+        1. Particles Background:
+           - Initialize particles.js with an elegant dark theme
+           - Configure particles to be visible but subtle
+           - Include try-catch blocks for initialization
+           - Handle canvas fallback gracefully
+
+        2. GSAP Animations:
+           - Implement sequential fade-in animations for all main content
+           - Each section should animate after the previous (stagger effect)
+           - Combine opacity and Y-axis movement
+           - Use appropriate timing (0.8s) and easing (Power2.easeOut)
+           - Ensure professional, smooth transitions
+
+        3. Robust Error Handling:
+           - Verify DOM elements exist before animating
+           - Include fallback animations
+           - Provide console warnings for missing elements
+           - Graceful degradation when scripts fail
+
+        4. Performance Optimization:
+           - Wait for DOMContentLoaded
+           - Use requestAnimationFrame where appropriate
+           - Optimize animation performance
+           - Ensure smooth particles interaction
+           - Implement proper cleanup methods
+
         The website should be complete and ready to use without modifications.
         """
         llm = TogetherLLM(temperature=0.7)
@@ -510,6 +561,125 @@ def publish_to_github_readme(github_token: str, readme_content: Optional[str] = 
 
     except Exception as e:
         return f"Error publishing README: {str(e)}"
+    
+class WebsiteContentInput(BaseModel):
+    resume_content: Optional[str] = Field(None, description="Optional resume text content")
+    query: Optional[str] = Field(None, description="Optional description or additional specific instructions for content generation")
+    llm: Optional[object] = Field(None, description="Optional LLM instance to use")
+@tool(args_schema=WebsiteContentInput)
+def generate_website_content(query: Optional[str] = None, resume_content: Optional[str] = None, llm: Optional[TogetherLLM] = None) -> str:
+    """
+    Generate professional website content by analyzing a resume text content.
+    If you are not provided with a resume text content, you can provide a description or additional instructions for content generation.
+    The content will include sections for professional summary, experience with quantified achievements, and skills.
+
+    Args:
+        query: Optional description or additional instructions for content generation
+        resume_content: Optional string containing resume text content
+        llm: Optional LLM instance to use (will create new one if not provided)
+
+    Returns:
+        str: Generated website content using HTML, JavaScript and CSS
+    """
+    # Initialize LLM with conservative temperature for reliable output
+    llm = llm or TogetherLLM(temperature=0.1)
+
+    profile_pic_exists = os.path.exists(os.path.join("temp", "imgs", "profile_pic.jpg"))
+
+    # Parse resume if provided
+    parsed_resume = None
+    if isinstance(resume_content, str):
+        parsed_resume = parse_resume(resume_content, llm)
+        if json.loads(parsed_resume).get("ERROR") == "NOT ENOUGH INFORMATION":
+            return "Not enough information to generate website content. Please provide the following information: " + json.loads(parsed_resume)["information_needed"]
+
+    # Generate website content
+    try:
+        content_prompt = f"""Create a unique and creative website using JavaScript, HTML and CSS. 
+        Focus on making this website stand out with:
+
+        - Unique layout arrangements
+        - Creative navigation patterns
+        - Interactive elements that engage visitors
+        - Modern design elements like glassmorphism, neumorphism, or creative gradients
+        - Innovative ways to present traditional content sections
+
+        Required sections and content:
+        - Main content including:
+          {f'- Profile picture with specific styling requirements: max-width/height 200px, circular shape, white border, right-aligned' if profile_pic_exists else ''}
+          - Name (h1)
+          - Role (professional subtitle)
+          - Bio paragraph
+          - "Get in Touch" section with hyperlinked contact info
+        - Professional Summary
+        - Experience
+        - Skills & Expertise
+
+        Technical requirements:
+        - Ensure responsive design
+        - Make it colorful and creative
+        - Include modern CSS features (Grid, Flexbox, CSS Variables)
+        - Add meaningful animations and transitions
+        - Clean, semantic HTML
+        {f'''- Profile picture requirements:
+          - Use class="profile-pic"
+          - Set src="imgs/profile_pic.jpg"
+          - Max dimensions: 200x200px
+          - Circular shape with border-radius: 50%
+          - White border: 3px solid #ffffff
+          - Object-fit: cover for aspect ratio
+          - Right-aligned positioning
+          - Subtle box shadow
+          - Responsive sizing (max 150px on mobile)''' if profile_pic_exists else ''}
+        - Proper indentation
+        - MUST include particles-js container
+        - MUST include link to style.css in the head section
+        - MUST include link to script.js at the end of body
+
+        JavaScript Implementation Requirements:
+        - MUST initialize particles.js with an elegant dark theme
+        - MUST configure particles to be visible but subtle
+
+        The website should be complete and ready to use without modifications. THIS IS VERY IMPORTANT. ALL THE NECESSARYINFORMATION SHOULD BE INCLUDED.
+        """
+        llm = TogetherLLM(temperature=0.3)
+        if parsed_resume:
+            response = llm.invoke([
+                {"role": "system", "content": content_prompt},
+                {"role": "user", "content": f"Generate content using this resume data and these very important additional instructions: {query}\n\nResume data:\n{parsed_resume}"}
+            ]).replace('"', "'")
+            # Save response HTML, CSS and JS to files in temp folder
+            with open(f"temp/index.html", "w") as file:
+                file.write(response.split("```html")[1].split("```")[0])
+            with open(f"temp/style.css", "w") as file:
+                file.write(response.split("```css")[1].split("```")[0])
+            with open(f"temp/script.js", "w") as file:
+                file.write(response.split("```javascript")[1].split("```")[0])
+            return response
+        elif query:
+            response = llm.invoke([
+                {"role": "system", "content": content_prompt},
+                {"role": "user", "content": f"Generate content using these very important additional instructions: {query}"}
+            ]).replace('"', "'")
+            # Save response HTML, CSS and JS to files in temp folder
+            with open(f"temp/index.html", "w") as file:
+                file.write(response.split("```html")[1].split("```")[0])
+            with open(f"temp/style.css", "w") as file:
+                file.write(response.split("```css")[1].split("```")[0])
+            with open(f"temp/script.js", "w") as file:
+                file.write(response.split("```javascript")[1].split("```")[0])
+            return response
+        else:
+            return """Please provide at least the following information to generate website content:
+            1. Your full name
+            2. Professional summary
+            3. Work experience (including company names, positions, dates, and key achievements)
+            4. Skills (both technical and soft skills)
+            
+            You can also upload a resume PDF for automatic processing."""
+            
+    except Exception as e:
+        return f"Error processing request: {str(e)}"
 
 
 # Module-level singleton and initialization state
@@ -522,7 +692,7 @@ class WebsiteRequestInput(BaseModel):
     resume_content: Optional[str] = Field(None, description="Optional resume content")
     llm: Optional[object] = Field(None, description="Optional LLM instance")
 
-@tool
+@tool(args_schema=WebsiteRequestInput)
 async def route_website_request(
     user_input: str,
     resume_content: Optional[str] = None,
@@ -531,8 +701,12 @@ async def route_website_request(
     """
     EVERY website request goes through here. This tool handles routing all website-related requests 
     to the appropriate generator (home page, education page, navigation, shared styles, etc.).
+    
+    Args:
+        user_input: The user's request or preferences (REQUIRED)
+        resume_content: Optional resume content
+        llm: Optional LLM instance
     """
-        
     try:
         router = await get_router(resume_content)
         

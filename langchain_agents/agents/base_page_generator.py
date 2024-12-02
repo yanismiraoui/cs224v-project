@@ -18,7 +18,6 @@ class BasePageGenerator:
             self.llm = TogetherLLM(
                 model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
                 temperature=0,
-                max_tokens=4000
             )
             self.shared_css = None
             self.shared_js = None
