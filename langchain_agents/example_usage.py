@@ -84,6 +84,8 @@ class ResumeProcessor:
             response = await self.agent.process("Create a professional website", 
                                               resume_content=resume_text)
             logger.info(f"Website Generation: {response}")
+            import sys
+            sys.exit()
 
             # Publish to GitHub
             response = await self.agent.process("Publish to GitHub")
@@ -97,7 +99,7 @@ class ResumeProcessor:
             logger.error(f"Website operations failed: {str(e)}")
             raise
 
-    async def run(self, resume_path: str, test_website: bool = False) -> None:
+    async def run(self, resume_path: str, test_website: bool = False, test_readme: bool = False) -> None:
         """Main execution method."""
         try:
             self.agent = JobApplicationAgent()
@@ -106,7 +108,8 @@ class ResumeProcessor:
             if test_website:
                 await self.test_website_operations(resume_text)
             
-            await self.test_readme_operations(resume_text)
+            if test_readme:
+                await self.test_readme_operations(resume_text)
 
         except Exception as e:
             logger.error(f"Processing failed: {str(e)}")
@@ -119,7 +122,8 @@ async def main():
     try:
         await processor.run(
             resume_path=str(resume_path),
-            test_website=False  # Change this to True
+            test_website=True,  # Change this to True
+            test_readme=True
         )
     except Exception as e:
         logger.error(f"Application failed: {str(e)}")
