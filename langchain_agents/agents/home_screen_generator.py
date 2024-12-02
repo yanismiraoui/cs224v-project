@@ -31,6 +31,7 @@ class HomeScreenGeneratorAgent:
         self.js = None
         self.profile_pic_path = "static/images/profile_pic.jpg"
         self.resume_content = None
+        self.section_html = {}
 
     async def generate_home_screen(self, 
                                  user_input: str,
@@ -275,9 +276,9 @@ Return ONLY the base HTML structure."""
         # Generate section-specific HTML
         section_html = {
             'education': await self._generate_education_html(),
-            'technical_experience': await self._generate_technical_experience_html(),
+            'experience': await self._generate_technical_experience_html(),
             # Add other section HTML generators as needed
-            # 'skills': await self._generate_skills_html(),
+            'skills': await self._generate_skills_html(),
             # 'experience': await self._generate_experience_html(),
         }
 
@@ -404,9 +405,9 @@ Do not include any other text or explanations."""
         # Generate section-specific CSS
         section_css = {
             'education': await self._generate_education_css(),
-            'technical_experience': await self._generate_technical_experience_css(),
+            'experience': await self._generate_technical_experience_css(),
             # Add other section CSS generators as needed
-            # 'skills': await self._generate_skills_css(),
+            'skills': await self._generate_skills_css(),
             # 'experience': await self._generate_experience_css(),
         }
 
@@ -706,11 +707,17 @@ Resume:
             return None
 
     async def _parse_resume_sections(self) -> List[str]:
-        """Extract major section headers from resume."""
-        section_prompt = f"""Extract the major section headers from this resume. 
-Return ONLY the section names in a comma-separated list.
-Common sections include: Education, Experience, Skills, Projects, Publications, etc.
-Do not include small subsections or individual entries.
+        """Extract major section headers from resume that best match Education, Experience, and Skills."""
+        section_prompt = f"""Analyze the resume and identify sections that best match these categories:
+- Education (e.g., "Academic Background", "Educational History", "Degrees")
+- Experience (e.g., "Work Experience", "Professional Experience", "Employment History", "Internships")
+- Skills (e.g., "Technical Skills", "Core Competencies", "Expertise", "Technologies")
+
+For each category, find the section that best matches it in the resume.
+Return ONLY these matched section names in a comma-separated list, in the order they appear.
+Skip any categories that don't have a good match in the resume.
+
+Example response: "Educational Background, Professional Experience, Technical Skills"
 
 Resume:
 {self.resume_content}"""
@@ -719,7 +726,9 @@ Resume:
             response = await self.llm.ainvoke([
                 {
                     "role": "system",
-                    "content": "Extract main section headers from resumes. Return only a comma-separated list."
+                    "content": """You are an expert at analyzing resume sections.
+Find the sections that best match Education, Experience, and Skills.
+Return only a comma-separated list of the matched section names."""
                 },
                 {"role": "user", "content": section_prompt}
             ])
@@ -727,8 +736,28 @@ Resume:
             # Get sections from response
             content = response['content'] if isinstance(response, dict) else response
             sections = [s.strip() for s in content.split(',')]
-            self.resume_sections = sections
-            return sections
+            
+            # Map similar section names to standard ones
+            section_mapping = {
+                'education': 'Education',
+                'experience': 'Experience',
+                'skills': 'Skills'
+            }
+            
+            # Standardize section names while preserving order
+            standardized_sections = []
+            for section in sections:
+                section_lower = section.lower()
+                for key, standard_name in section_mapping.items():
+                    if key in section_lower:
+                        standardized_sections.append(standard_name)
+                        break
+            
+            print(f"Found sections: {sections}")
+            print(f"Standardized to: {standardized_sections}")
+            
+            self.resume_sections = standardized_sections
+            return standardized_sections
 
         except Exception as e:
             print(f"Section parsing error: {str(e)}")
@@ -753,7 +782,7 @@ Resume:
             if not isinstance(text, str):
                 print(f"Unexpected response type: {type(text)}")
                 return ""
-                
+            
             # Look for both variations of language markers
             start_markers = [f"```{language}", "```"]
             start = -1
@@ -762,17 +791,17 @@ Resume:
                 if start != -1:
                     start += len(marker)
                     break
-                    
+            
+            # If no start marker found, treat entire text as code
             if start == -1:
-                print(f"Could not find start marker for {language}")
-                return ""
+                return text.strip()
             
             end = text.find("```", start)
             
+            # If no end marker found, use rest of text
             if end == -1:
-                print(f"Could not find end marker for {language}")
-                return ""
-                
+                return text[start:].strip()
+            
             code = text[start:end].strip()
             return code
             
@@ -1027,25 +1056,29 @@ Technical Requirements:
 1. Structure:
    - Section with id="technical-experience"
    - h2 header "Technical Experience"
-   - Each experience entry:
-     * div class="experience-entry"
+   - Each experience entry MUST be wrapped in:
+     * div class="experience-entry card"
+     * Add proper card structure and padding
+   - Each entry must include:
      * Company name as h3
      * Role title in italics
      * Dates right-aligned
-     * Bullet points for achievements
+     * Achievement list
 
 2. Format Example:
-   <h2>Technical Experience</h2>
-   <div class="experience-entry">
-     <h3>Figma</h3>
-     <div class="role-date-line">
-       <em>Data Science Intern - Experimentation and Causal Inference</em>
-       <span class="dates">June 2024 - September 2024</span>
+   <section id="technical-experience">
+     <h2>Technical Experience</h2>
+     <div class="experience-entry card">
+       <h3>Company Name</h3>
+       <div class="role-date-line">
+         <em>Role Title</em>
+         <span class="dates">Date Range</span>
+       </div>
+       <ul>
+         <li>Achievement details...</li>
+       </ul>
      </div>
-     <ul>
-       <li>Achievement details...</li>
-     </ul>
-   </div>
+   </section>
 
 Experience Data:
 {json.dumps(experience_data, indent=2)}
@@ -1060,51 +1093,61 @@ Return ONLY the technical experience section HTML."""
             {"role": "user", "content": experience_prompt}
         ])
 
-        return response if isinstance(response, str) else response.get('content', '') 
+        html_content = response if isinstance(response, str) else response.get('content', '')
+        # Store the generated HTML
+        self.section_html['technical_experience'] = html_content
+        print("Saved technical experience HTML to section_html")
+        return html_content
 
     async def _generate_technical_experience_css(self) -> str:
         """Generate CSS specifically for technical experience section."""
-        # First check if we have experience data
-        experience_data = await self._find_experience_section()
-        
-        if not experience_data:
-            print("No technical experience data found for CSS!")
+        # Get the stored HTML
+        tech_exp_html = self.section_html.get('technical_experience', '')
+        if not tech_exp_html:
+            print("No technical experience HTML found!")
             return ""
 
-        experience_css_prompt = """Create CSS for the technical experience section with these requirements:
+        experience_css_prompt = f"""Given this EXACT technical experience HTML structure:
 
-Style Requirements:
-1. Layout:
-   - .experience-entry: margin-bottom: 2rem
-   - .role-date-line: 
-     * display: flex
-     * justify-content: space-between
-     * align-items: center
-     * margin-bottom: 1rem
+{tech_exp_html}
 
-2. Typography:
-   - h3 (company name): 
-     * font-size: 1.5rem
-     * margin-bottom: 0.5rem
-   - em (role title):
-     * font-weight: normal
-   - .dates:
-     * text-align: right
-   
-3. List Styling:
-   - ul: margin-top: 1rem
-   - li: margin-bottom: 0.75rem
+Create CSS that achieves these style requirements:
+1. Card Layout:
+   - .experience-entry.card:
+     * Must have visible background color using var(--card-bg)
+     * Must have rounded corners using var(--card-radius)
+     * Must have padding using var(--card-padding)
+     * Must have margin-bottom: 2rem
+     * Must have visible box-shadow
+     * Must have smooth transition
+     * Must have border: 1px solid rgba(255,255,255,0.1)
+   - .experience-entry.card:hover:
+     * Must have slight scale transform
+     * Must have enhanced shadow
 
-4. Responsive Design:
-   - Stack role and date on mobile
-   - Maintain readability at all sizes
+2. Inner Layout:
+   - Match the HTML structure exactly
+   - Style all elements present in the HTML
+   - Ensure proper spacing between all elements
+   - Maintain hierarchy of information
 
-Return ONLY the CSS code for the technical experience section."""
+3. Typography:
+   - Style each heading and text element found in the HTML
+   - Maintain proper visual hierarchy
+   - Ensure readability
+
+4. Critical Requirements:
+   - CSS must match HTML classes exactly
+   - Cards MUST be visibly distinct from background
+   - All content must be properly spaced
+   - Maintain consistent styling across all entries
+
+Return ONLY the CSS code needed for this exact HTML structure."""
 
         response = await self.llm.ainvoke([
             {
                 "role": "system",
-                "content": "You are a CSS expert. Return only the technical experience section CSS."
+                "content": "You are a CSS expert. Return only the CSS code that matches the provided HTML structure exactly."
             },
             {"role": "user", "content": experience_css_prompt}
         ])
@@ -1195,3 +1238,120 @@ Example matches:
         print(f"Selected experience section key: {section_key}")
         
         return sections.get(section_key, [])
+
+    async def _generate_skills_html(self) -> str:
+        """Generate HTML specifically for skills section."""
+        skills_data = self.personal_info.get('section_content', {}).get('skills', [])
+        
+        if not skills_data:
+            print("No skills data found!")
+            return ""
+
+        skills_prompt = f"""Create ONLY the skills section HTML with these requirements:
+
+Skills Data:
+{json.dumps(skills_data, indent=2)}
+
+Technical Requirements:
+1. Structure:
+   - Section with id="skills"
+   - h2 header "Skills"
+   - Container div with class="skills-grid"
+   - For each skill category (technical, soft, tools, etc):
+     * ONLY create sections for categories that have content
+     * SKIP any empty categories or categories with no skills
+     * For non-empty categories:
+       - div with class="skill-category"
+       - h3 with category name
+       - div with class="skill-items"
+       - Each skill in a span with class="skill-tag"
+
+2. Format Example:
+   <section id="skills">
+     <h2>Skills</h2>
+     <div class="skills-grid">
+       <!-- Only include if technical skills exist -->
+       <div class="skill-category">
+         <h3>Technical Skills</h3>
+         <div class="skill-items">
+           <span class="skill-tag">Python</span>
+           <span class="skill-tag">JavaScript</span>
+         </div>
+       </div>
+     </div>
+   </section>
+
+3. Critical Requirements:
+   - DO NOT generate HTML for empty categories
+   - DO NOT include categories with no skills
+   - Only create sections for categories that have actual content
+   - Maintain clean, semantic HTML structure
+
+Return ONLY the skills section HTML."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": """You are an HTML expert. Return only the skills section HTML.
+CRITICAL: Skip any empty categories. Only generate HTML for categories that have actual skills listed."""
+            },
+            {"role": "user", "content": skills_prompt}
+        ])
+
+        html_content = response if isinstance(response, str) else response.get('content', '')
+        self.section_html['skills'] = html_content
+        return html_content
+
+    async def _generate_skills_css(self) -> str:
+        """Generate CSS specifically for skills section."""
+        # Get the stored HTML
+        skills_html = self.section_html.get('skills', '')
+        if not skills_html:
+            print("No skills HTML found!")
+            return ""
+
+        skills_css_prompt = f"""Given this EXACT skills section HTML structure:
+
+{skills_html}
+
+Create CSS that achieves these style requirements:
+1. Grid Layout:
+   - Match the HTML structure exactly
+   - Style the grid container to display skills horizontally
+   - Ensure proper spacing between all elements
+   - Make grid responsive to screen size
+
+2. Skill Categories:
+   - Style each category container found in the HTML
+   - Add visual separation between categories
+   - Maintain consistent spacing
+   - Use subtle backgrounds or borders
+
+3. Skill Tags:
+   - Style individual skill tags to appear side-by-side
+   - Add visual distinction to each tag
+   - Include subtle hover effects
+   - Ensure proper spacing between tags
+
+4. Typography:
+   - Style each heading and text element found in the HTML
+   - Maintain proper visual hierarchy
+   - Ensure readability
+
+5. Critical Requirements:
+   - CSS must match HTML classes exactly
+   - Skills must be clearly readable
+   - Layout must be responsive
+   - Maintain consistent styling across all categories
+
+Return ONLY the CSS code needed for this exact HTML structure."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "You are a CSS expert. Return only the CSS code that matches the provided HTML structure exactly."
+            },
+            {"role": "user", "content": skills_css_prompt}
+        ])
+
+        return response if isinstance(response, str) else response.get('content', '')
