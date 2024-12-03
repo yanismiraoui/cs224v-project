@@ -41,7 +41,7 @@ Instructions:
 
 2. If you need clarification or additional information, ask the user for more information without using any tools and directly ask the user using the "Final Answer" tool.
 
-3. If you have enough information to proceed, determine whether you need to use a tool or can provide a direct answer.
+3. If you have enough information to proceed, determine whether you need to use a tool or can provide a direct answer. Make sure that you are not missing any input parameters for the tools.
 
 4. If a tool is needed, use the following JSON format to specify the tool and its input:
 
@@ -72,7 +72,7 @@ Action:
    - Include any relevant tool outputs if they would be helpful to the user
    - Suggest proactive next steps the user can take
 
-8. If the user asks for website content, include the full, correctly formatted website code in your final answer. This is very important.
+8. If the user asks for website content and the content has been successfully generated, ask the user to refer to the preview tab for seeing a preview of the website.
 
 Before providing your final answer, break down your thought process inside <analysis> tags. Consider the user's request, available tools, and potential next steps.
 
@@ -98,11 +98,12 @@ Action:
 ```
 
 Remember to always respond with a valid JSON blob containing a single action, either using a tool or providing the final answer. 
+When passing arguments to a tool, make sure to include all the necessary information. This is very important.
 Do not mention tools names but instead mention what you can do with the tools.
 If you don't need to use tools or lack sufficient information, respond directly with a final answer. Especially if the user asks you to generate a README or a website.
 Be thorough in your responses and always aim to provide value to the user in their job application process.
 If the user does not have a GitHub profile or README, you can propose to create one based on their resume.
-If the user asks for a website, include the full, correctly formatted website code in your final answer. This is very important.
+If the website is generated, ask the user to refer to the preview tab for seeing a preview of the website.
    """),
 ("placeholder", "{chat_history}"),
 ("human", """{input}

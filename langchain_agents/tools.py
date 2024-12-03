@@ -77,7 +77,7 @@ class ProfileOptimizerInput(BaseModel):
 class GitHubReadmeInput(BaseModel):
     query: Optional[str] = Field(None, description="Optional description or additional specific instructions for content generation")
     resume_content: str = Field(description="Resume text content")
-    github_token: str = Field(description="GitHub personal access token")
+    github_token: Optional[str] = Field(None, description="GitHub personal access token")
     llm: Optional[object] = Field(None, description="Optional LLM instance to use")
 
 
@@ -229,12 +229,21 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
 def generate_github_readme(query: Optional[str] = None, resume_content: Optional[str] = None, github_token: Optional[str] = None, llm: Optional[object] = None) -> str:
     """Generate a GitHub README file based on resume content.
     If you are not provided with a resume text content, you can provide a description or additional instructions for content generation.
+
+    Args:
+        query: Optional description or additional instructions for content generation
+        resume_content: Optional string containing resume text content
+        github_token: Optional GitHub personal access token
+        llm: Optional LLM instance to use (will create new one if not provided)
     """
     llm = llm or TogetherLLM(temperature=0.7)
     try:
-        g = Github(github_token)
-        user = g.get_user()
-        username = user.login
+        if github_token:
+            g = Github(github_token)
+            user = g.get_user()
+            username = user.login
+        else:
+            username = None
     except Exception as e:
         username = None
     

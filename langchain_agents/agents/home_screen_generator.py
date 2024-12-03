@@ -22,8 +22,7 @@ class HomeScreenGeneratorAgent:
     def __init__(self):
         self.llm = TogetherLLM(
             model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
-            temperature=0,
-            max_tokens=4000
+            temperature=0.1,
         )
         self.personal_info = {}
         self.html = None
@@ -222,7 +221,8 @@ Return ONLY the complete, combined HTML code."""
             profile_pic_section = """
             - Profile Picture: Include an img tag referencing imgs/profile_pic.jpg
             - Place profile picture prominently in the layout
-            - Add proper alt text for accessibility"""
+            - Add proper alt text for accessibility
+            - Make sure the profile picture is not hidden behind other elements (e.g., navigation bar)"""
         
         sections = self.personal_info.get('sections', [])
         nav_links = []
@@ -380,7 +380,8 @@ Style Requirements:
    - Optional: slightly larger text (20px) on wider screens
 
 6. Colors and Visibility:
-   - Text must be clearly visible on dark background
+   - Text must be clearly visible on dark background. 
+   - Make sure the text is visible at all times (when hovering over links, for example).
    - Subtle hover effects for links
    - Content directly on background
 
