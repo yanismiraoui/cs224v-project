@@ -1,12 +1,9 @@
 from custom_together_llm import TogetherLLM
-from typing import Optional, Dict, Union, Any, List
-from langchain_core.prompts import ChatPromptTemplate
+from typing import Optional, Dict, Any, List
 import json
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 import os
-from PIL import Image
 
 @dataclass
 class Conversation:
@@ -22,7 +19,7 @@ class HomeScreenGeneratorAgent:
     def __init__(self):
         self.llm = TogetherLLM(
             model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
-            temperature=0.1,
+            temperature=0,
         )
         self.personal_info = {}
         self.html = None
@@ -88,9 +85,12 @@ Please type it directly (e.g., "My {missing_fields[0]} is...")"""
                 print("Updating design...")
                 await self._update_design(user_input)
 
-            # If we have a valid response, save the files
+            # If we have a valid response, validate and save the files
             if all([self.html, self.css, self.js]):
-            # Save files to temp folder
+                # Validate visual design
+                validation_result = await self._validate_visual_design()
+                
+                # Save files to temp folder
                 temp_dir = "temp"
                 os.makedirs(temp_dir, exist_ok=True)
 
@@ -219,10 +219,15 @@ Return ONLY the complete, combined HTML code."""
         profile_pic_section = ""
         if profile_pic_exists:
             profile_pic_section = """
-            - Profile Picture: Include an img tag referencing imgs/profile_pic.jpg
-            - Place profile picture prominently in the layout
-            - Add proper alt text for accessibility
-            - Make sure the profile picture is not hidden behind other elements (e.g., navigation bar)"""
+            Profile Picture Requirements:
+            - MUST be inside a div with class="name-and-pic-container"
+            - The name-and-pic-container MUST contain both:
+              * The h1 heading with the name
+              * The profile picture img
+            - Profile picture MUST have class="profile-pic"
+            - Profile picture MUST be placed directly next to the name
+            - Profile picture MUST use imgs/profile_pic.jpg as src
+            - Add proper alt text for accessibility"""
         
         sections = self.personal_info.get('sections', [])
         nav_links = []
@@ -247,12 +252,21 @@ Structure:
       {chr(10).join(nav_links)}
 
 2. Main content:
-   {f'- Profile picture with class="profile-pic"' if profile_pic_exists else ''}
-   - Name (h1)
+   - CRITICAL: If profile picture exists, wrap name and picture in div.name-and-pic-container
+   - Profile picture MUST be next to the name, on the same line but on the left side of the page
    - Section header "About Me" (h2) with id="about-me"
    - Bio sentence
    - Section header "Get In Touch" (h2) with id="contact"
    - Each contact method on separate line
+
+<!-- Add the particles-js container to ensure the background is always active -->
+<div id="particles-js"></div>
+
+Example name and picture structure:
+<div class="name-and-pic-container">
+    <h1>{self.personal_info.get('name')}</h1>
+    <img src="imgs/profile_pic.jpg" alt="Profile picture" class="profile-pic">
+</div>
 
 Requirements:
 - Clean, semantic HTML
@@ -325,37 +339,50 @@ Return ONLY the complete, combined CSS code."""
 
     async def _generate_css(self, html: str) -> str:
         """Generate CSS file based on HTML structure."""
-        # Generate main CSS
-        
         profile_pic_exists = os.path.exists("imgs/profile_pic.jpg")
 
         profile_pic_section = """
-Profile Picture Styling:
-- Set max-width: 400px
-- Set max-height: 400px
-- Create circular profile picture
-- Add a border that contrasts with the background color
-- Use object-fit: cover
-- Add responsive sizing
-- Align with the main heading""" if profile_pic_exists else ""
+Profile Picture and Name Layout:
+1. .name-and-pic-container:
+   - MUST use display: flex
+   - align-items: center
+   - gap: 2rem
+   - margin-bottom: 2rem
+   - justify-content: flex-start
+
+2. .profile-pic:
+   - width: 150px
+   - height: 150px
+   - border-radius: 50%
+   - object-fit: cover
+   - border: 3px solid var(--accent-color)
+   - box-shadow: 0 0 20px rgba(0,0,0,0.3)
+   - transition: transform 0.3s ease
+   
+3. .profile-pic:hover:
+   - transform: scale(1.05)
+
+4. h1 in .name-and-pic-container:
+   - margin: 0
+   - flex: 1""" if profile_pic_exists else ""
 
         main_css_prompt = f"""Create base CSS for this HTML structure:
 
 {html}
+
 Style Requirements:
 1. Layout and Alignment:
    - Main container: max-width: 1200px, centered
    - Main body text should align to the same left edge
    - NO staggered or uneven text alignment
    - Name section should start well below navigation
-   - Profile picture should be on the right side of the name, not above it
+   - CRITICAL: Name and profile picture MUST be side-by-side using flexbox
 
 {profile_pic_section}
 
 2. Name and Profile Layout:
-   - Name and profile picture should be in same container
-   - Profile picture floated to right of name heading
-   - Both elements should be vertically centered
+   - MUST use .name-and-pic-container with flexbox
+   - Name and profile picture MUST be vertically centered
    - Clear spacing between this container and sections below
    - Container should use flexbox for alignment
 
@@ -380,16 +407,18 @@ Style Requirements:
    - Optional: slightly larger text (20px) on wider screens
 
 6. Colors and Visibility:
-   - Text must be clearly visible on dark background. 
-   - Make sure the text is visible at all times (when hovering over links, for example).
+   - Text must be clearly visible on dark background
+   - Make sure the text is visible at all times
    - Subtle hover effects for links
    - Content directly on background
 
 7. Responsive Design:
    - Content should maintain alignment on all screens
-   - Stack columns on mobile
+   - Stack name and profile picture on mobile (flex-direction: column)
    - Min content width: 800px on desktop
    - Maintain proportional spacing on all devices
+
+8. **Ensure the #particles-js container covers the entire background and remains fixed**
 
 Return ONLY the base CSS code."""
 
@@ -520,6 +549,7 @@ Requirements:
    - Initialize particles.js with an elegant theme
    - Ensure particles are visible but subtle
    - Include proper error handling
+   - **Initialize particles.js after the DOM content is fully loaded to ensure it always runs**
 
 2. Text Animations:
    - Use GSAP for animations
@@ -1356,3 +1386,156 @@ Return ONLY the CSS code needed for this exact HTML structure."""
         ])
 
         return response if isinstance(response, str) else response.get('content', '')
+
+    async def _validate_visual_design(self) -> Dict[str, Any]:
+        """Validate color contrast and particles background implementation."""
+        try:
+            response = await self.llm.ainvoke([
+                {
+                    "role": "system",
+                    "content": """You are an expert web developer specializing in visual design and accessibility.
+Your task is to analyze code for contrast issues and particles.js implementation.
+CRITICAL: You must return ONLY valid JSON matching this exact structure:
+{
+    "contrast_issues": [{"element": "string", "issue": "string", "fix": "string"}],
+    "particles_issues": [{"issue": "string", "fix": "string"}],
+    "is_valid": boolean,
+    "summary": "string"
+}"""
+                },
+                {"role": "user", "content": f"""Analyze this code for visual and particles.js issues:
+
+HTML: {self.html}
+CSS: {self.css}
+JavaScript: {self.js}
+
+Focus on:
+1. Color contrast (white-on-white, low contrast, text readability)
+2. Particles.js implementation (positioning, z-index, initialization without JSON file)
+
+Return analysis as JSON matching the structure specified in the system message."""}
+            ])
+
+            content = response if isinstance(response, str) else response.get('content', '')
+            # Strip any markdown formatting that might be present
+            content = content.strip().replace('```json', '').replace('```', '')
+            validation_result = json.loads(content)
+            
+            # Apply fixes if there are issues
+            if not validation_result['is_valid']:
+                if validation_result['contrast_issues']:
+                    print("Fixing contrast issues...")
+                    await self._fix_contrast_issues(validation_result['contrast_issues'])
+                
+                if validation_result['particles_issues']:
+                    print("Fixing particles issues...")
+                    await self._fix_particles_issues(validation_result['particles_issues'])
+
+            return validation_result
+
+        except Exception as e:
+            print(f"Error validating visual design: {str(e)}")
+            return {
+                "contrast_issues": [],
+                "particles_issues": [],
+                "is_valid": False,
+                "summary": f"Validation failed with error: {str(e)}"
+            }
+
+    async def _fix_contrast_issues(self, issues: List[Dict[str, str]]) -> None:
+        """Apply fixes for contrast issues."""
+        for issue in issues:
+            element = issue['element']
+            fix = issue['fix']
+            
+            css_fix_prompt = f"""Update the CSS for {element} with this fix: {fix}
+
+Current CSS:
+{self.css}
+
+Return ONLY the complete updated CSS."""
+
+            try:
+                response = await self.llm.ainvoke([
+                    {
+                        "role": "system",
+                        "content": "You are a CSS expert. Apply the specified contrast fix and return the complete updated CSS."
+                    },
+                    {"role": "user", "content": css_fix_prompt}
+                ])
+
+                self.css = response if isinstance(response, str) else response.get('content', '')
+                print(f"Applied contrast fix for {element}")
+
+            except Exception as e:
+                print(f"Error fixing contrast for {element}: {str(e)}")
+
+    async def _fix_particles_issues(self, issues: List[Dict[str, str]]) -> None:
+        """Apply fixes for particles.js implementation issues."""
+        try:
+            for issue in issues:
+                fix = issue['fix']
+                
+                # Determine if fix is for HTML, CSS, or JS
+                if 'z-index' in fix.lower() or 'position' in fix.lower():
+                    # CSS fix
+                    css_fix_prompt = f"""Update the CSS for particles.js with this fix: {fix}
+
+Current CSS:
+{self.css}
+
+Return ONLY the complete updated CSS."""
+
+                    response = await self.llm.ainvoke([
+                        {
+                            "role": "system",
+                            "content": "You are a CSS expert. Apply the specified particles.js fix and return the complete updated CSS."
+                        },
+                        {"role": "user", "content": css_fix_prompt}
+                    ])
+
+                    self.css = response if isinstance(response, str) else response.get('content', '')
+                    print("Applied particles CSS fix")
+
+                elif 'initialization' in fix.lower() or 'config' in fix.lower():
+                    # JavaScript fix
+                    js_fix_prompt = f"""Update the JavaScript for particles.js with this fix: {fix}
+
+Current JavaScript:
+{self.js}
+
+Return ONLY the complete updated JavaScript."""
+
+                    response = await self.llm.ainvoke([
+                        {
+                            "role": "system",
+                            "content": "You are a JavaScript expert. Apply the specified particles.js fix and return the complete updated JavaScript."
+                        },
+                        {"role": "user", "content": js_fix_prompt}
+                    ])
+
+                    self.js = response if isinstance(response, str) else response.get('content', '')
+                    print("Applied particles JavaScript fix")
+
+                else:
+                    # HTML fix
+                    html_fix_prompt = f"""Update the HTML for particles.js with this fix: {fix}
+
+Current HTML:
+{self.html}
+
+Return ONLY the complete updated HTML."""
+
+                    response = await self.llm.ainvoke([
+                        {
+                            "role": "system",
+                            "content": "You are an HTML expert. Apply the specified particles.js fix and return the complete updated HTML."
+                        },
+                        {"role": "user", "content": html_fix_prompt}
+                    ])
+
+                    self.html = response if isinstance(response, str) else response.get('content', '')
+                    print("Applied particles HTML fix")
+
+        except Exception as e:
+            print(f"Error fixing particles issue: {str(e)}")
