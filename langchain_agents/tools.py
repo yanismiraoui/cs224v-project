@@ -1,5 +1,5 @@
 from langchain.tools import tool
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 from custom_together_llm import TogetherLLM
 from github import Github
 from pydantic import BaseModel, Field
@@ -7,8 +7,9 @@ import requests
 import json
 from bs4 import BeautifulSoup
 import random
-from agents.home_screen_generator import HomeScreenGeneratorAgent
+from agents.home_screen_generator import HomeScreenGenerator
 import os
+from agents.page_router import get_router, PageRouter
 
 def parse_resume(resume_content: str, llm: Optional[object] = None) -> str:
     """
@@ -81,7 +82,7 @@ class GitHubReadmeInput(BaseModel):
     llm: Optional[object] = Field(None, description="Optional LLM instance to use")
 
 
-home_screen_agent = HomeScreenGeneratorAgent()
+home_screen_agent = HomeScreenGenerator()
 @tool
 async def generate_home_screen(
     user_input: str,
@@ -226,7 +227,7 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
         return f"Error processing request: {str(e)}"
 
 @tool(args_schema=GitHubReadmeInput)
-def generate_github_readme(query: Optional[str] = None, resume_content: Optional[str] = None, github_token: Optional[str] = None, llm: Optional[object] = None) -> str:
+def generate_github_readme(query: Optional[str] = None, resume_content: str = None, github_token: str = None, llm: Optional[object] = None) -> str:
     """Generate a GitHub README file based on resume content.
     If you are not provided with a resume text content, you can provide a description or additional instructions for content generation.
 
@@ -512,3 +513,53 @@ def publish_to_github_readme(github_token: str, readme_content: Optional[str] = 
 
     except Exception as e:
         return f"Error publishing README: {str(e)}"
+
+
+# Module-level singleton and initialization state
+_router_instance = None
+_initialized = False
+
+class WebsiteRequestInput(BaseModel):
+    """Input schema for website request routing."""
+    user_input: str = Field(..., description="The user's request or preferences")
+    resume_content: Optional[str] = Field(None, description="Optional resume content")
+    llm: Optional[object] = Field(None, description="Optional LLM instance")
+
+@tool
+async def route_website_request(
+    user_input: str,
+    resume_content: str,
+) -> str:
+    """
+    Routes all website-related requests to appropriate generators.
+
+    Args:
+        user_input (str): The user's request or preferences (e.g., "Create a dark theme website")
+        resume_content (str): The content of the resume to use for the website
+
+    Returns:
+        str: Status message about what was created/updated
+    """
+
+    try:
+        router = await get_router(resume_content)
+        
+        if not PageRouter.is_initialized():
+            print("Initializing with user input:", user_input)
+            # Generate shared elements
+            await router.base_generator.generate_initial_shared_elements(user_input)
+            # Generate home page
+            
+            await router.home_generator.generate_home_screen(
+                user_input=user_input,
+            )
+
+            PageRouter.set_initialized()
+            return "Initial website design and home page created based on your preferences!"
+        
+        return await router.handle_request(user_input)
+        
+    except Exception as e:
+        print(f"Error processing request: {str(e)}")
+        print(f"Error type: {type(e)}")
+        raise

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import os
 from PIL import Image
+from .base_page_generator import BasePageGenerator
 
 @dataclass
 class Conversation:
@@ -16,14 +17,15 @@ class Conversation:
     design_preferences: Dict[str, Any]
     generated_code: Optional[Dict[str, str]] = None
 
-class HomeScreenGeneratorAgent:
-    """Agent specifically designed for generating personal home screens."""
+class HomeScreenGenerator(BasePageGenerator):
+    """Generates the home/about page content."""
     
     def __init__(self):
         self.llm = TogetherLLM(
             model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
             temperature=0.1,
         )
+
         self.personal_info = {}
         self.html = None
         self.css = None
@@ -33,8 +35,7 @@ class HomeScreenGeneratorAgent:
         self.section_html = {}
 
     async def generate_home_screen(self, 
-                                 user_input: str,
-                                 resume_content: str = None) -> str:
+                                 user_input: str) -> str:
         """Generate the home screen based on user input."""
         try:
             # Store resume content if provided
@@ -55,42 +56,36 @@ class HomeScreenGeneratorAgent:
                         print("Successfully extracted section content")
                     print(f"Personal info: {json.dumps(self.personal_info, indent=2)}")
 
-            # 2. Parse user input for any personal information
+            # Parse user input for any additional preferences
             user_info = await self._parse_user_input(user_input)
             if user_info:
-                # Update personal_info with any new information
                 self.personal_info.update({
                     k: v for k, v in user_info.items() if v
                 })
                 print(f"Updated personal information from user input: {user_info}")
 
-            # 3. Check for missing required info
-            required_fields = ['name', 'role', 'bio', 'contact']
-            missing_fields = [
-                field for field in required_fields 
-                if not self.personal_info.get(field)
-            ]
+            # # Check for missing required info
+            # required_fields = ['name', 'role', 'bio', 'contact']
+            # missing_fields = [
+            #     field for field in required_fields 
+            #     if not self.personal_info.get(field)
+            # ]
             
-            if missing_fields:
-                return {
-                    "status": "missing_info",
-                    "missing_fields": missing_fields,
-                    "message": f"""I need your {missing_fields[0]} to continue.
+            # if missing_fields:
+            #     return {
+            #         "status": "missing_info",
+            #         "missing_fields": missing_fields,
+            #         "message": f"I need your {missing_fields[0]} to continue."
+            #     }
 
-Please type it directly (e.g., "My {missing_fields[0]} is...")"""
-                }
-
-            # 4. Generate or update design
-            response = None
+            # Generate or update design
             if not any([self.html, self.css, self.js]):
                 await self._generate_initial_design(user_input)
             else:
-                print("Updating design...")
                 await self._update_design(user_input)
 
-            # If we have a valid response, save the files
+            # Save files if generated successfully
             if all([self.html, self.css, self.js]):
-            # Save files to temp folder
                 temp_dir = "temp"
                 os.makedirs(temp_dir, exist_ok=True)
 
@@ -107,9 +102,7 @@ Please type it directly (e.g., "My {missing_fields[0]} is...")"""
                     clean_js = self._extract_code_block(self.js, "js")
                     f.write(clean_js)
 
-                # await self._check_and_create_required_files(self.js, temp_dir)
-                
-                return "Home page has been generated and saved successfully! You can now publish it to GitHub Pages."
+                return "Home page has been generated and saved successfully!"
             else:
                 return "Failed to generate all required code components."
 
@@ -229,14 +222,16 @@ Return ONLY the complete, combined HTML code."""
         for section in sections:
             section_id = section.lower().replace(" ", "-").replace("&", "and")
             nav_links.append(f'- "{section}" links to "#{section_id}"')
-
         # Generate main HTML structure
         main_html_prompt = f"""Create a clean HTML file for a personal website with these requirements:
 
-Content:
+Content (only generate sections for provided information, skip if not provided):
 - Name: {self.personal_info.get('name')}
 - Bio: {self.personal_info.get('bio')}
 - Contact: {self.personal_info.get('contact')}
+
+Note: Generate HTML sections ONLY for the information that is provided above. If any field is None or empty, do not create its corresponding section.
+
 {profile_pic_section}
 
 Structure:
@@ -506,41 +501,29 @@ Return ONLY the CSS code for the navigation section."""
         return response if isinstance(response, str) else response.get('content', '')
 
     async def _generate_js(self, html: str, css: str) -> str:
-        """Generate JavaScript file based on HTML and CSS."""
-        js_prompt = f"""Create JavaScript for this HTML and CSS:
+        """Generate JavaScript file based on HTML, CSS, and shared template."""
+        # Get base JS from BasePageGenerator
+        base_js = self.shared_js
+        
+        js_prompt = f"""Enhance this base JavaScript with additional functionality specific to the home page.
+Base JavaScript:
+{base_js}
 
-HTML:
+HTML to enhance:
 {html}
 
-CSS:
-{css}
-
 Requirements:
-1. Particles Background:
-   - Initialize particles.js with an elegant theme
-   - Ensure particles are visible but subtle
-   - Include proper error handling
+1. Keep ALL existing functionality from base JS
+2. Maintain:
+   - Particle effects
+   - Animation patterns
+   - Event handling structure
+3. Add ONLY new functionality for:
+   - Home-page specific animations
+   - Additional interactions
+   - Page-specific features
 
-2. Text Animations:
-   - Use GSAP for animations
-   - Create fade-in animations for all main content elements
-   - Include subtle movement (like slide up)
-   - Use appropriate timing and easing
-   - Maintain professional, smooth transitions
-   - Define ALL animation configurations within this file
-   - DO NOT reference external animation configurations
-
-3. Error Handling:
-   - Check if elements exist before animating
-   - Graceful fallbacks
-   - Console warnings for missing elements
-
-4. Performance:
-   - Initialize after DOM content loaded
-   - Optimize animation performance
-   - Ensure smooth interaction between particles and animations
-
-Return ONLY the JavaScript code without any explanations, comments, or markdown formatting."""
+Return the complete JavaScript including base code and new additions."""
 
         response = await self.llm.ainvoke([
             {

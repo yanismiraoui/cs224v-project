@@ -83,7 +83,21 @@ How can I help you?"""
         self.website_temp_dir = Path(__file__).parent.parent / "temp"
         self.static_folder = Path(__file__).parent / "static" / "images"
         self.static_folder.mkdir(parents=True, exist_ok=True)
-    
+        
+        # Add uploaded file states
+        if 'uploaded_resume_file' not in st.session_state:
+            st.session_state.uploaded_resume_file = None
+        if 'uploaded_resume_text' not in st.session_state:
+            st.session_state.uploaded_resume_text = None
+        if 'profile_picture' not in st.session_state:
+            st.session_state.profile_picture = None
+        
+        # Add to the __init__ method, after other session state initializations
+        if 'is_processing' not in st.session_state:
+            st.session_state.is_processing = False
+        if 'current_user_input' not in st.session_state:
+            st.session_state.current_user_input = None
+
     @staticmethod
     async def initialize_agent() -> JobApplicationAgent:
         """Initialize the agent asynchronously."""
@@ -305,34 +319,44 @@ How can I help you?"""
                                                    type=['pdf'], 
                                                    accept_multiple_files=False,
                                                    key="resume_uploader")
-                    if uploaded_file:
+                    if uploaded_file and uploaded_file != st.session_state.uploaded_resume_file:
                         if uploaded_file.size > 2*1024*1024:
                             st.error("File size limit is 2MB")
                         else:
-                            st.session_state.uploaded_resume = uploaded_file
+                            # Store both the file and its contents
+                            st.session_state.uploaded_resume_file = uploaded_file
+                            st.session_state.uploaded_resume_text = get_pdf_text(uploaded_file)
                             st.success("Resume uploaded!")
 
                 with upload_col2:
                     # Profile picture uploader
-                    uploaded_file = st.file_uploader("Upload your profile picture", type=['jpg', 'jpeg', 'png'])
-                    if uploaded_file is not None:
-                        # Create temp/imgs directory if it doesn't exist
-                        imgs_dir = os.path.join("temp", "imgs")
-                        os.makedirs(imgs_dir, exist_ok=True)  # This creates both temp and imgs directories if they don't exist
+                    uploaded_file = st.file_uploader("Upload your profile picture", 
+                                                   type=['jpg', 'jpeg', 'png'],
+                                                   key="profile_pic_uploader")
+                    if uploaded_file and uploaded_file != st.session_state.profile_picture:
+                        try:
+                            # Create temp/imgs directory if it doesn't exist
+                            imgs_dir = os.path.join("temp", "imgs")
+                            os.makedirs(imgs_dir, exist_ok=True)
 
-                        # Save the uploaded file
-                        profile_pic = Image.open(uploaded_file)
-                        profile_pic_path = os.path.join(imgs_dir, "profile_pic.jpg")
+                            # Save the uploaded file
+                            profile_pic = Image.open(uploaded_file)
+                            profile_pic_path = os.path.join(imgs_dir, "profile_pic.jpg")
 
-                        # Convert to RGB if necessary (in case of PNG upload)
-                        if profile_pic.mode in ('RGBA', 'P'):
-                            profile_pic = profile_pic.convert('RGB')
+                            # Convert to RGB if necessary
+                            if profile_pic.mode in ('RGBA', 'P'):
+                                profile_pic = profile_pic.convert('RGB')
 
-                        # Save the image
-                        profile_pic.save(profile_pic_path)
+                            # Save the image
+                            profile_pic.save(profile_pic_path)
+                            
+                            # Store in session state
+                            st.session_state.profile_picture = uploaded_file
 
-                        # Show the uploaded image
-                        st.image(profile_pic, caption='Uploaded Profile Picture', width=200)
+                            # Show the uploaded image
+                            st.image(profile_pic, caption='Uploaded Profile Picture', width=200)
+                        except Exception as e:
+                            st.error(f"Error processing image: {str(e)}")
                 
                 with st.expander("Example Prompts", expanded=True):
                     st.markdown("""
@@ -372,24 +396,46 @@ How can I help you?"""
                 # Chat interface
                 self.display_chat_history()
                 
-                # User input
-                if user_input := st.chat_input("Type your message here...", key="user_input"):
+                # User input - disabled while processing
+                user_input = st.chat_input(
+                    "Type your message here...", 
+                    key="user_input",
+                    disabled=st.session_state.is_processing
+                )
+                
+                if user_input:
+                    # Store user input in session state
+                    st.session_state.current_user_input = user_input
                     # Add user message to chat
                     self.render_chat_message("user", user_input)
                     st.session_state.chat_history.append({"role": "user", "content": user_input})
                     
+                    # Set processing flag
+                    st.session_state.is_processing = True
+                    st.rerun()  # Rerun to update UI and disable input
+                
+                # Handle processing if there's a pending message
+                if st.session_state.is_processing and st.session_state.chat_history[-1]["role"] == "user":
                     # Process input with loading indicator
                     with st.spinner("Thinking..."):
-                        # If resume is uploaded and user wants website content
-                        if st.session_state.uploaded_resume:
-                            pdf_text = get_pdf_text(st.session_state.uploaded_resume)
-                            response = asyncio.run(self.process_input(user_input, pdf_text))
+                        # Use stored resume text if available
+                        if st.session_state.uploaded_resume_text:
+                            response = asyncio.run(self.process_input(
+                                st.session_state.current_user_input, 
+                                st.session_state.uploaded_resume_text
+                            ))
                         else:
-                            response = asyncio.run(self.process_input(user_input))
+                            response = asyncio.run(self.process_input(
+                                st.session_state.current_user_input
+                            ))
                     
                     # Add assistant response to chat
                     self.render_chat_message("assistant", response)
                     st.session_state.chat_history.append({"role": "assistant", "content": response})
+                    
+                    # Reset processing flag and clear current input
+                    st.session_state.is_processing = False
+                    st.session_state.current_user_input = None
                     
                     # Rerun to update the UI
                     st.rerun()
