@@ -98,6 +98,7 @@ Action:
 ```
 
 Remember to always respond with a valid JSON blob containing a single action, either using a tool or providing the final answer. 
+When passing arguments to a tool, make sure to include all the necessary information. This is very important.
 Do not mention tools names but instead mention what you can do with the tools.
 If you don't need to use tools or lack sufficient information, respond directly with a final answer. Especially if the user asks you to generate a README or a website.
 Be thorough in your responses and always aim to provide value to the user in their job application process.

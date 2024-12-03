@@ -15,6 +15,7 @@ from PIL import Image
 from streamlit.components.v1 import html
 import glob
 import shutil
+import base64
 
 # Initialize environment variables and configurations
 try:
@@ -511,7 +512,6 @@ How can I help you?"""
                                 padding: 20px;
                                 background: white;
                                 height: 700px;
-                                overflow-y: auto
                             }}
                         </style>
                         """
@@ -527,6 +527,16 @@ How can I help you?"""
                         if 'script.js' in website_files:
                             js_content = f"<script>{website_files['script.js']}</script>"
                         html_content = html_content.replace('</body>', f'{js_content}</body>')
+                        
+                        # Handle profile picture
+                        profile_pic_path = os.path.join(self.website_temp_dir, "imgs", "profile_pic.jpg")
+                        if os.path.exists(profile_pic_path):
+                            img_base64 = self.get_image_base64(profile_pic_path)
+                            if img_base64:
+                                html_content = html_content.replace(
+                                    'src="imgs/profile_pic.jpg"',
+                                    f'src="data:image/jpeg;base64,{img_base64}"'
+                                )
                         
                         # Render the complete webpage
                         html(html_content, height=700, scrolling=True)
@@ -568,6 +578,15 @@ How can I help you?"""
             with open(readme_path, 'r', encoding='utf-8') as f:
                 return f.read()
         return None
+
+    def get_image_base64(self, image_path):
+        """Convert image to base64 string."""
+        try:
+            with open(image_path, "rb") as img_file:
+                return base64.b64encode(img_file.read()).decode('utf-8')
+        except Exception as e:
+            st.error(f"Error encoding image: {str(e)}")
+            return None
 
 if __name__ == "__main__":
     app = StreamlitUI()

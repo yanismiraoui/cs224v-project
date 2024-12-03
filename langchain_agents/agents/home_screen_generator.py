@@ -21,22 +21,40 @@ class HomeScreenGenerator(BasePageGenerator):
     """Generates the home/about page content."""
     
     def __init__(self):
-        super().__init__()
+        self.llm = TogetherLLM(
+            model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo",
+            temperature=0.1,
+        )
+
         self.personal_info = {}
         self.html = None
         self.css = None
         self.js = None
         self.profile_pic_path = "static/images/profile_pic.jpg"
+        self.resume_content = None
+        self.section_html = {}
 
     async def generate_home_screen(self, 
                                  user_input: str) -> str:
         """Generate the home screen based on user input."""
         try:
-            # Parse resume for personal info
-            parsed_info = await self._parse_resume()
-            if parsed_info:
-                self.personal_info = parsed_info
-                print("Successfully extracted info from resume")
+            # Store resume content if provided
+            if resume_content:
+                self.resume_content = resume_content
+
+            # 1. First get sections from resume
+            if self.resume_content:
+                sections = await self._parse_resume_sections()
+                if sections:
+                    self.personal_info = {'sections': sections}
+                    print(f"Successfully extracted sections: {sections}")
+                    
+                    # Now parse content for each section
+                    section_content = await self._parse_resume()
+                    if section_content:
+                        self.personal_info.update(section_content)
+                        print("Successfully extracted section content")
+                    print(f"Personal info: {json.dumps(self.personal_info, indent=2)}")
 
             # Parse user input for any additional preferences
             user_info = await self._parse_user_input(user_input)
@@ -71,12 +89,18 @@ class HomeScreenGenerator(BasePageGenerator):
                 temp_dir = "temp"
                 os.makedirs(temp_dir, exist_ok=True)
 
+                # Use _extract_code_block to clean the code before writing
                 with open(os.path.join(temp_dir, "index.html"), "w") as f:
-                    f.write(self.html.strip())
+                    clean_html = self._extract_code_block(self.html, "html")
+                    f.write(clean_html)
+                
                 with open(os.path.join(temp_dir, "style.css"), "w") as f:
-                    f.write(self.css.strip())
+                    clean_css = self._extract_code_block(self.css, "css")
+                    f.write(clean_css)
+                
                 with open(os.path.join(temp_dir, "script.js"), "w") as f:
-                    f.write(self.js.strip())
+                    clean_js = self._extract_code_block(self.js, "js")
+                    f.write(clean_js)
 
                 return "Home page has been generated and saved successfully!"
             else:
@@ -112,9 +136,77 @@ class HomeScreenGenerator(BasePageGenerator):
             print(f"Error applying fix: {str(e)}")
             return code
 
+    async def _generate_education_html(self) -> str:
+        """Generate HTML specifically for education section."""
+        education_data = self.personal_info.get('section_content', {}).get('education', [])
+        
+        if not education_data:
+            return ""
+
+        education_prompt = f"""Create ONLY the education section HTML with these requirements:
+
+Education Data:
+{json.dumps(education_data, indent=2)}
+
+Technical Requirements:
+- Create section with id="education"
+- Include h2 header "Education"
+- Each education entry must:
+  * Use div with class="education-entry"
+  * Include data-institution attribute
+  * Have left side (edu-left) with institution and degree
+  * Have right side (edu-right) with GPA and dates attended
+- Maintain consistent structure and alignment
+- Use semantic HTML5 elements
+
+Return ONLY the education section HTML."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "You are an HTML expert. Return only the education section HTML."
+            },
+            {"role": "user", "content": education_prompt}
+        ])
+
+        return response if isinstance(response, str) else response.get('content', '')
+
+    async def _combine_html_sections(self, main_html: str, section_html: Dict[str, str]) -> str:
+        """Combine main HTML with section-specific HTML content."""
+        combine_prompt = f"""Combine these HTML sections while maintaining structure and semantic meaning.
+
+Main HTML Structure:
+{main_html}
+
+Section-specific HTML to integrate:
+{json.dumps(section_html, indent=2)}
+
+Requirements:
+- Insert each section in the appropriate place in main content
+- Maintain all section IDs and classes
+- Preserve navigation links and structure
+- Keep all attributes and data properties
+- Ensure proper nesting of elements
+- Maintain semantic HTML structure
+- Keep proper indentation
+
+Return ONLY the complete, combined HTML code."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": """You are an HTML expert specializing in combining HTML sections.
+                Return only clean, semantic HTML without conflicts.
+                DO NOT include any markdown formatting or explanations."""
+            },
+            {"role": "user", "content": combine_prompt}
+        ])
+
+        return response if isinstance(response, str) else response.get('content', '')
+
     async def _generate_html(self) -> str:
         """Generate HTML file."""
-        # Check for profile picture in temp/imgs folder
+        # Check for profile picture
         profile_pic_exists = os.path.exists(os.path.join("temp", "imgs", "profile_pic.jpg"))
         
         profile_pic_section = ""
@@ -122,13 +214,19 @@ class HomeScreenGenerator(BasePageGenerator):
             profile_pic_section = """
             - Profile Picture: Include an img tag referencing imgs/profile_pic.jpg
             - Place profile picture prominently in the layout
-            - Add proper alt text for accessibility"""
-
-        html_prompt = f"""Create a clean HTML file for a personal website with these requirements:
+            - Add proper alt text for accessibility
+            - Make sure the profile picture is not hidden behind other elements (e.g., navigation bar)"""
+        
+        sections = self.personal_info.get('sections', [])
+        nav_links = []
+        for section in sections:
+            section_id = section.lower().replace(" ", "-").replace("&", "and")
+            nav_links.append(f'- "{section}" links to "#{section_id}"')
+        # Generate main HTML structure
+        main_html_prompt = f"""Create a clean HTML file for a personal website with these requirements:
 
 Content (only generate sections for provided information, skip if not provided):
 - Name: {self.personal_info.get('name')}
-- Role: {self.personal_info.get('role')}
 - Bio: {self.personal_info.get('bio')}
 - Contact: {self.personal_info.get('contact')}
 
@@ -137,101 +235,267 @@ Note: Generate HTML sections ONLY for the information that is provided above. If
 {profile_pic_section}
 
 Structure:
-1. Navigation:
-   - Add iframe at top of body: <iframe src="navigation.html" frameborder="0" id="nav-frame"></iframe>
-   - Add link to navigation.css in head section
-   - Add link to navigation.js before end of body
-   - The iframe should span full width and adjust height to content
+1. Navigation bar with:
+   - Each nav item MUST be an <a> tag linking to section IDs
+   - Use href="#{{section_id}}" format
+   - Navigation links MUST follow this EXACT pattern:
+      {chr(10).join(nav_links)}
 
 2. Main content:
    {f'- Profile picture with class="profile-pic"' if profile_pic_exists else ''}
    - Name (h1)
-   - Role (professional subtitle)
-   - Section header "About Me" (h2)
-   - Bio paragraph
-   - Section header "Get In Touch" (h2) with hyperlinked contact info
-   - Each contact method should be on a separate line
+   - Section header "About Me" (h2) with id="about-me"
+   - Bio sentence
+   - Section header "Get In Touch" (h2) with id="contact"
+   - Each contact method on separate line
 
 Requirements:
 - Clean, semantic HTML
-{f'- Include profile picture with src="imgs/profile_pic.jpg"' if profile_pic_exists else ''}
 - Proper indentation
 - Include particles-js container
-- Link to external scripts (particles.js, gsap)
-- MUST include link to style.css in the head section
-- MUST include link to script.js at the end of body
-- MUST include link to navigation.css in head section
-- MUST include link to navigation.js before end of body
+- Link to external scripts
+- Include style.css and script.js references
+- Add scroll-behavior: smooth
+- Each section must have matching nav link ID
 
-Return ONLY the HTML code with proper CSS and JS file references without any explanations, comments, or markdown formatting."""
+Return ONLY the base HTML structure."""
+
+        main_html = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "You are an HTML expert. Return only clean, semantic HTML code."
+            },
+            {"role": "user", "content": main_html_prompt}
+        ])
+
+        # Generate section-specific HTML
+        section_html = {
+            'education': await self._generate_education_html(),
+            'experience': await self._generate_technical_experience_html(),
+            # Add other section HTML generators as needed
+            'skills': await self._generate_skills_html(),
+            # 'experience': await self._generate_experience_html(),
+        }
+
+        # Combine all HTML
+        combined_html = await self._combine_html_sections(
+            main_html if isinstance(main_html, str) else main_html.get('content', ''),
+            section_html
+        )
+
+        return combined_html
+
+    async def _combine_css_sections(self, main_css: str, section_css: Dict[str, str]) -> str:
+        """Combine main CSS with section-specific CSS styles."""
+        combine_prompt = f"""Combine and optimize these CSS sections while maintaining specificity and avoiding conflicts.
+
+Main CSS:
+{main_css}
+
+Section-specific CSS to integrate:
+{json.dumps(section_css, indent=2)}
+
+Requirements:
+- Maintain specificity of selectors
+- Remove any duplicate rules
+- Organize related styles together
+- Preserve all functionality
+- Ensure responsive designs work together
+- Keep consistent spacing patterns
+- Maintain hover effects and transitions
+
+Return ONLY the complete, combined CSS code."""
 
         response = await self.llm.ainvoke([
             {
                 "role": "system",
-                "content": """You are an HTML expert. Return only clean, semantic HTML code.
-                DO NOT include:
-                - No markdown code block markers (```)
-                - No language identifiers
-                - No explanations before or after the code
-                - DO NOT generate navigation HTML, only include the iframe
-                """
+                "content": """You are a CSS expert specializing in combining and optimizing stylesheets.
+                Return only clean, efficient CSS without duplicates or conflicts.
+                DO NOT include any markdown formatting or explanations."""
             },
-            {"role": "user", "content": html_prompt}
+            {"role": "user", "content": combine_prompt}
         ])
 
         return response if isinstance(response, str) else response.get('content', '')
 
     async def _generate_css(self, html: str) -> str:
-        """Generate CSS file based on HTML structure and shared template."""
-        # Get base styles from BasePageGenerator
-        base_css = self.shared_css
+        """Generate CSS file based on HTML structure."""
+        # Generate main CSS
         
-        # Check for profile picture
         profile_pic_exists = os.path.exists("imgs/profile_pic.jpg")
-        
+
         profile_pic_section = """
-        Profile Picture Styling:
-        - Set max-width: 200px
-        - Set max-height: 200px
-        - Create circular profile picture
-        - Add white border
-        - Use object-fit: cover
-        - Position on the right side
-        - Add subtle box shadow
-        - Add responsive sizing""" if profile_pic_exists else ""
+Profile Picture Styling:
+- Set max-width: 400px
+- Set max-height: 400px
+- Create circular profile picture
+- Add a border that contrasts with the background color
+- Use object-fit: cover
+- Add responsive sizing
+- Align with the main heading""" if profile_pic_exists else ""
 
-        css_prompt = f"""Enhance this base CSS with additional styles specific to the home page.
-Base CSS:
-{base_css}
+        main_css_prompt = f"""Create base CSS for this HTML structure:
 
-HTML to style:
 {html}
-
-Additional requirements:
-1. Keep ALL existing styles from base CSS
-2. Add styles ONLY for elements not covered in base CSS
-3. Maintain consistent:
-   - Color scheme
-   - Typography
-   - Spacing patterns
-   - Animation timings
+Style Requirements:
+1. Layout and Alignment:
+   - Main container: max-width: 1200px, centered
+   - Main body text should align to the same left edge
+   - NO staggered or uneven text alignment
+   - Name section should start well below navigation
+   - Profile picture should be on the right side of the name, not above it
 
 {profile_pic_section}
 
-Return the complete CSS including base styles and new additions."""
+2. Name and Profile Layout:
+   - Name and profile picture should be in same container
+   - Profile picture floated to right of name heading
+   - Both elements should be vertically centered
+   - Clear spacing between this container and sections below
+   - Container should use flexbox for alignment
+
+3. Critical Spacing:
+   - Large margin after each section's content (margin-bottom: 4rem)
+   - Significant space before each header (margin-top: 3rem)
+   - Headers should have breathing room below (margin-bottom: 2rem)
+   - Consistent paragraph spacing (margin-bottom: 1.5rem)
+   - Keep spacing proportional across screen sizes
+
+4. Critical Z-Index and Positioning:
+   - #particles-js: position: fixed, width/height 100%, z-index: -1
+   - Main content: position: relative, z-index: 1
+   - Navigation: position: fixed, z-index: 2
+   - Ensure background stays behind all content
+
+5. Text Styling:
+   - Base font size: 18px for regular text
+   - Consistent heading sizes
+   - Clean typography with good line height
+   - Keep text readable against the dark background
+   - Optional: slightly larger text (20px) on wider screens
+
+6. Colors and Visibility:
+   - Text must be clearly visible on dark background. 
+   - Make sure the text is visible at all times (when hovering over links, for example).
+   - Subtle hover effects for links
+   - Content directly on background
+
+7. Responsive Design:
+   - Content should maintain alignment on all screens
+   - Stack columns on mobile
+   - Min content width: 800px on desktop
+   - Maintain proportional spacing on all devices
+
+Return ONLY the base CSS code."""
+
+        main_css = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": """You are a CSS expert. Return only the CSS code wrapped in proper markdown code blocks.
+CRITICAL: Your response must start with ```css and end with ``` 
+Do not include any other text or explanations."""
+            },
+            {"role": "user", "content": main_css_prompt}
+        ])
+
+        # Generate section-specific CSS
+        section_css = {
+            'education': await self._generate_education_css(),
+            'experience': await self._generate_technical_experience_css(),
+            # Add other section CSS generators as needed
+            'skills': await self._generate_skills_css(),
+            # 'experience': await self._generate_experience_css(),
+        }
+
+        # Combine all CSS
+        combined_css = await self._combine_css_sections(
+            main_css if isinstance(main_css, str) else main_css.get('content', ''),
+            section_css
+        )
+
+        return combined_css
+
+    async def _generate_education_css(self) -> str:
+        """Generate CSS specifically for education section."""
+        education_css_prompt = """Create CSS for the education section with these requirements:
+
+Style Requirements:
+1. Layout:
+    - Each education entry should be a grid with two columns
+    - Left column: Institution and degree info
+    - Right column: Dates, GPA, Courses, etc
+    - Add proper spacing between entries
+
+2. Typography:
+    - Institution name should be prominent and bold
+    - Degree details slightly smaller but clear
+
+3. Visual Effects:
+    - Subtle hover effect on each entry
+    - Hover effect should not be the same color as the text.
+    - Smooth transitions for any hover states
+    - Optional border or separator between entries
+
+4. Responsive Design:
+    - Stack columns on mobile devices
+    - Maintain readability at all screen sizes
+    - Adjust spacing for smaller screens
+
+Return ONLY the CSS code for the education section."""
 
         response = await self.llm.ainvoke([
             {
                 "role": "system",
-                "content": """You are a CSS expert. 
-                - Preserve ALL base CSS
-                - Add only new, non-conflicting styles
-                - Maintain design consistency
-                DO NOT include:
-                - No markdown formatting
-                - No explanations"""
+                "content": "You are a CSS expert. Return only the education section CSS."
             },
-            {"role": "user", "content": css_prompt}
+            {"role": "user", "content": education_css_prompt}
+        ])
+
+        return response if isinstance(response, str) else response.get('content', '')
+
+    async def _generate_navigation_css(self) -> str:
+        """Generate CSS specifically for navigation section."""
+        navigation_css_prompt = """Create CSS for the navigation section with these requirements:
+
+Style Requirements:
+1. Layout and Alignment:
+    - Fixed position at top of page
+    - Full-width dark background container
+    - Use same container width as main content (1200px)
+    - Include padding on left and right
+    - Include padding between the top and bottom of the container
+
+2. Critical Alignment:
+    - Navigation items MUST align with page content below
+    - First nav item MUST align with leftmost content
+    - Use same padding/margin system as main container
+    - Maintain consistent left alignment across all screen sizes
+
+3. Visual Effects:
+    - Subtle hover effects on links
+    - Smooth transitions
+    - Semi-transparent background
+    - Optional subtle shadow
+
+4. Z-Index and Positioning:
+    - position: fixed
+    - z-index: 2
+    - width: 100%
+    - top: 0
+
+5. Responsive Design:
+    - Keep left alignment on all screen sizes
+    - Maintain same content margins as main container
+    - Adjust padding on mobile while keeping alignment
+
+Return ONLY the CSS code for the navigation section."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "You are a CSS expert. Return only the navigation section CSS."
+            },
+            {"role": "user", "content": navigation_css_prompt}
         ])
 
         return response if isinstance(response, str) else response.get('content', '')
@@ -264,13 +528,9 @@ Return the complete JavaScript including base code and new additions."""
         response = await self.llm.ainvoke([
             {
                 "role": "system",
-                "content": """You are a JavaScript expert.
-                - Preserve ALL base JavaScript
-                - Add only new, non-conflicting functionality
-                - Maintain consistent patterns
-                DO NOT include:
-                - No markdown formatting
-                - No explanations"""
+                "content": """You are a JavaScript expert. Return only the JavaScript code wrapped in proper markdown code blocks.
+CRITICAL: Your response must start with ```js and end with ```
+Do not include any other text or explanations."""
             },
             {"role": "user", "content": js_prompt}
         ])
@@ -302,119 +562,190 @@ Return the complete JavaScript including base code and new additions."""
             raise
 
     async def _parse_resume(self) -> Optional[Dict[str, Any]]:
-        """Parse resume for personal info only."""
+        """Parse resume content for each section."""
         try:
-            resume_content = self.get_resume()
-            if not resume_content:
-                print("No resume content found in parent class")
-                return None
-
+            sections = self.personal_info.get('sections', [])
+            
+            # First get basic info
             info_response = await self.llm.ainvoke([
                 {
                     "role": "system",
-                    "content": """You are a resume parser. For the role field, follow these rules:
-1. If person is currently a student, use format: "[Degree] Student at [University]"
-2. If employed, use their most recent job title: "[Title] at [Company]"
-3. Always pick the CURRENT role (student or job)."""
+                    "content": """You are a resume parser. Extract information precisely as requested."""
                 },
-                {"role": "user", "content": f"""Extract these details from the resume:
-
+                {"role": "user", "content": f"""Extract these basic details from the resume:
 1. Full name (usually at top)
-2. Current role, following the rules above
+2. Current role, following these rules:
+   - If they're a student: use "[Degree] Student at [University]"
+   - If employed: use most recent "[Job Title] at [Company]"
 3. Contact info (email, phone, LinkedIn)
+4. Create a one-line professional bio
 
-Format EXACTLY like this:
-name: John Smith
-role: M.S. Computer Science Student at Stanford University
-contact: email, phone, linkedin
+Return ONLY in this JSON format:
+{{
+    "name": "string",
+    "role": "string",
+    "contact": {{
+        "email": "string",
+        "phone": "string",
+        "linkedin": "string"
+    }},
+    "bio": "string"
+}}
 
 Resume text:
-{resume_content}"""}
+{self.resume_content}"""}
             ])
 
-            # Rest of the method remains the same...
+            # Parse the basic info response
             info_text = info_response['content'] if isinstance(info_response, dict) else info_response
-            
-            info_dict = {}
-            for line in info_text.strip().split('\n'):
-                if ':' in line:
-                    key, value = line.split(':', 1)
-                    info_dict[key.strip()] = value.strip()
+            basic_info = json.loads(info_text)
 
-            # Verify role is properly formatted
-            if not info_dict.get('role') or info_dict.get('role') == 'Role Not Found':
-                # Try a second attempt specifically for role
-                role_response = await self.llm.ainvoke([
+            # Define section-specific schemas
+            section_schemas = {
+                "Education": """{
+                    "degree": "string",
+                    "institution": "string",
+                    "location": "string",
+                    "dates": "string",
+                    "gpa": "string (optional)",
+                    "achievements": ["string"]
+                }""",
+                "Experience": """{
+                    "title": "string",
+                    "company": "string",
+                    "location": "string",
+                    "dates": "string",
+                    "achievements": ["string"]
+                }""",
+                "Skills": """{
+                    "technical": ["string"],
+                    "soft": ["string"],
+                    "tools": ["string"],
+                    "languages": ["string"]
+                }""",
+                "Projects": """{
+                    "name": "string",
+                    "description": "string",
+                    "technologies": ["string"],
+                    "link": "string (optional)",
+                    "achievements": ["string"]
+                }""",
+                "Publications": """{
+                    "title": "string",
+                    "authors": ["string"],
+                    "venue": "string",
+                    "date": "string",
+                    "link": "string (optional)",
+                    "description": "string"
+                }"""
+            }
+
+            # Now get content for each section
+            section_content = {}
+            for section in sections:
+                # Get the appropriate schema or use a default one
+                schema = section_schemas.get(section, """{
+                    "title": "string",
+                    "description": "string",
+                    "details": ["string"]
+                }""")
+
+                section_response = await self.llm.ainvoke([
                     {
                         "role": "system",
-                        "content": "Extract the current role (student or job) from this resume."
+                        "content": f"Extract content for the {section} section using the specified JSON schema. Return an array of entries."
                     },
-                    {"role": "user", "content": f"""Look for:
-1. Current student status (check Education section for current enrollment)
-2. Most recent job title (check Experience section)
-3. Return the CURRENT role only
+                    {"role": "user", "content": f"""Find and extract all content from the {section} section.
+Each entry should follow this schema:
+{schema}
 
-Format: "[Title/Degree] at [Institution/Company]"
+Return ONLY a JSON array of entries following this schema. Example:
+[
+    {{ entry1 following schema }},
+    {{ entry2 following schema }}
+]
 
 Resume:
-{resume_content}"""}
+{self.resume_content}"""}
                 ])
                 
-                role_text = role_response['content'] if isinstance(role_response, dict) else role_response
-                info_dict['role'] = role_text.strip()
+                content = section_response['content'] if isinstance(section_response, dict) else section_response
+                try:
+                    parsed_content = json.loads(content)
+                    section_content[section.lower().replace(' ', '_')] = parsed_content
+                except json.JSONDecodeError:
+                    print(f"Failed to parse content for {section} section")
+                    continue
 
-            # Get bio separately
-            bio_response = await self.llm.ainvoke([
-                {
-                    "role": "system",
-                    "content": "Create a concise one-line professional bio."
-                },
-                {"role": "user", "content": f"Create a one-line professional bio from this resume:\n{resume_content}"}
-            ])
-
-            bio_text = bio_response['content'] if isinstance(bio_response, dict) else bio_response
-            bio_text = bio_text.strip().strip('"')
-
-            # Store the information
-            return {
-                "name": info_dict.get('name', ''),
-                "role": info_dict.get('role', ''),
-                "contact": info_dict.get('contact', ''),
-                "bio": bio_text.strip()
+            # Combine basic info with section content
+            result = {
+                **basic_info,
+                'section_content': section_content
             }
+
+            print(f"Parsed resume content: {json.dumps(result, indent=2)}")
+            return result
 
         except Exception as e:
             print(f"Resume parsing error: {str(e)}")
             return None
 
-#     async def _parse_resume_sections(self, resume_content: str) -> List[str]:
-#         """Extract major section headers from resume."""
-#         section_prompt = f"""Extract the major section headers from this resume. 
-# Return ONLY the section names in a comma-separated list.
-# Common sections include: Education, Experience, Skills, Projects, Publications, etc.
-# Do not include small subsections or individual entries.
+    async def _parse_resume_sections(self) -> List[str]:
+        """Extract major section headers from resume that best match Education, Experience, and Skills."""
+        section_prompt = f"""Analyze the resume and identify sections that best match these categories:
+- Education (e.g., "Academic Background", "Educational History", "Degrees")
+- Experience (e.g., "Work Experience", "Professional Experience", "Employment History", "Internships")
+- Skills (e.g., "Technical Skills", "Core Competencies", "Expertise", "Technologies")
 
-# Resume:
-# {resume_content}"""
+For each category, find the section that best matches it in the resume.
+Return ONLY these matched section names in a comma-separated list, in the order they appear.
+Skip any categories that don't have a good match in the resume.
 
-#         try:
-#             response = await self.llm.ainvoke([
-#                 {
-#                     "role": "system",
-#                     "content": "Extract main section headers from resumes. Return only a comma-separated list."
-#                 },
-#                 {"role": "user", "content": section_prompt}
-#             ])
+Example response: "Educational Background, Professional Experience, Technical Skills"
 
-#             # Get sections from response
-#             content = response['content'] if isinstance(response, dict) else response
-#             sections = [s.strip() for s in content.split(',')]
-#             self.resume_sections = sections
-#             return sections
+Resume:
+{self.resume_content}"""
 
-#         except Exception as e:
-#             print(f"Section parsing error: {str(e)}")
-#             raise
+        try:
+            response = await self.llm.ainvoke([
+                {
+                    "role": "system",
+                    "content": """You are an expert at analyzing resume sections.
+Find the sections that best match Education, Experience, and Skills.
+Return only a comma-separated list of the matched section names."""
+                },
+                {"role": "user", "content": section_prompt}
+            ])
+
+            # Get sections from response
+            content = response['content'] if isinstance(response, dict) else response
+            sections = [s.strip() for s in content.split(',')]
+            
+            # Map similar section names to standard ones
+            section_mapping = {
+                'education': 'Education',
+                'experience': 'Experience',
+                'skills': 'Skills'
+            }
+            
+            # Standardize section names while preserving order
+            standardized_sections = []
+            for section in sections:
+                section_lower = section.lower()
+                for key, standard_name in section_mapping.items():
+                    if key in section_lower:
+                        standardized_sections.append(standard_name)
+                        break
+            
+            print(f"Found sections: {sections}")
+            print(f"Standardized to: {standardized_sections}")
+            
+            self.resume_sections = standardized_sections
+            return standardized_sections
+
+        except Exception as e:
+            print(f"Section parsing error: {str(e)}")
+            raise
 
     def _format_conversation_history(self) -> str:
         """Format recent conversation history."""
@@ -435,7 +766,7 @@ Resume:
             if not isinstance(text, str):
                 print(f"Unexpected response type: {type(text)}")
                 return ""
-                
+            
             # Look for both variations of language markers
             start_markers = [f"```{language}", "```"]
             start = -1
@@ -444,17 +775,17 @@ Resume:
                 if start != -1:
                     start += len(marker)
                     break
-                    
+            
+            # If no start marker found, treat entire text as code
             if start == -1:
-                print(f"Could not find start marker for {language}")
-                return ""
+                return text.strip()
             
             end = text.find("```", start)
             
+            # If no end marker found, use rest of text
             if end == -1:
-                print(f"Could not find end marker for {language}")
-                return ""
-                
+                return text[start:].strip()
+            
             code = text[start:end].strip()
             return code
             
@@ -694,3 +1025,317 @@ Return the JavaScript code with only the specified changes without any explanati
         print(f"Updated JavaScript: {response}")
 
         return response if isinstance(response, str) else response.get('content', '') 
+
+    async def _generate_technical_experience_html(self) -> str:
+        """Generate HTML specifically for technical experience section."""
+        experience_data = await self._find_experience_section()
+        
+        if not experience_data:
+            print("No technical experience data found!")
+            return ""
+
+        experience_prompt = f"""Create ONLY the technical experience section HTML with these requirements:
+
+Technical Requirements:
+1. Structure:
+   - Section with id="technical-experience"
+   - h2 header "Technical Experience"
+   - Each experience entry MUST be wrapped in:
+     * div class="experience-entry card"
+     * Add proper card structure and padding
+   - Each entry must include:
+     * Company name as h3
+     * Role title in italics
+     * Dates right-aligned
+     * Achievement list
+
+2. Format Example:
+   <section id="technical-experience">
+     <h2>Technical Experience</h2>
+     <div class="experience-entry card">
+       <h3>Company Name</h3>
+       <div class="role-date-line">
+         <em>Role Title</em>
+         <span class="dates">Date Range</span>
+       </div>
+       <ul>
+         <li>Achievement details...</li>
+       </ul>
+     </div>
+   </section>
+
+Experience Data:
+{json.dumps(experience_data, indent=2)}
+
+Return ONLY the technical experience section HTML."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "You are an HTML expert. Return only the technical experience section HTML."
+            },
+            {"role": "user", "content": experience_prompt}
+        ])
+
+        html_content = response if isinstance(response, str) else response.get('content', '')
+        # Store the generated HTML
+        self.section_html['technical_experience'] = html_content
+        print("Saved technical experience HTML to section_html")
+        return html_content
+
+    async def _generate_technical_experience_css(self) -> str:
+        """Generate CSS specifically for technical experience section."""
+        # Get the stored HTML
+        tech_exp_html = self.section_html.get('technical_experience', '')
+        if not tech_exp_html:
+            print("No technical experience HTML found!")
+            return ""
+
+        experience_css_prompt = f"""Given this EXACT technical experience HTML structure:
+
+{tech_exp_html}
+
+Create CSS that achieves these style requirements:
+1. Card Layout:
+   - .experience-entry.card:
+     * Must have visible background color using var(--card-bg)
+     * Must have rounded corners using var(--card-radius)
+     * Must have padding using var(--card-padding)
+     * Must have margin-bottom: 2rem
+     * Must have visible box-shadow
+     * Must have smooth transition
+     * Must have border: 1px solid rgba(255,255,255,0.1)
+   - .experience-entry.card:hover:
+     * Must have slight scale transform
+     * Must have enhanced shadow
+
+2. Inner Layout:
+   - Match the HTML structure exactly
+   - Style all elements present in the HTML
+   - Ensure proper spacing between all elements
+   - Maintain hierarchy of information
+
+3. Typography:
+   - Style each heading and text element found in the HTML
+   - Maintain proper visual hierarchy
+   - Ensure readability
+
+4. Critical Requirements:
+   - CSS must match HTML classes exactly
+   - Cards MUST be visibly distinct from background
+   - All content must be properly spaced
+   - Maintain consistent styling across all entries
+
+Return ONLY the CSS code needed for this exact HTML structure."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "You are a CSS expert. Return only the CSS code that matches the provided HTML structure exactly."
+            },
+            {"role": "user", "content": experience_css_prompt}
+        ])
+
+        return response if isinstance(response, str) else response.get('content', '')
+
+    async def _generate_technical_experience_js(self) -> str:
+        """Generate JavaScript specifically for technical experience section."""
+        # First check if we have experience data
+        experience_data = await self._find_experience_section()
+        
+        if not experience_data:
+            print("No technical experience data found for JS!")
+            return ""
+
+        experience_js_prompt = """Create JavaScript for the technical experience section with these requirements:
+
+Functionality Requirements:
+1. Interactive Features:
+    - Smooth scroll to section when nav link clicked
+    - Optional expand/collapse for long achievement lists
+    - Hover effects and animations
+    - Optional filtering or sorting capabilities
+
+2. Animation Effects:
+    - Fade in entries on scroll
+    - Smooth transitions for any interactive elements
+    - Optional progressive loading of entries
+    - Subtle hover animations
+
+3. Utility Functions:
+    - Handle any dynamic content loading
+    - Manage responsive behaviors
+    - Optional search/filter functionality
+    - Event listeners for interactive elements
+
+4. Performance:
+    - Efficient event handling
+    - Debounced scroll listeners
+    - Optimized animations
+    - Clean, modular code structure
+
+Return ONLY the JavaScript code for the technical experience section."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "You are a JavaScript expert. Return only the technical experience section JavaScript."
+            },
+            {"role": "user", "content": experience_js_prompt}
+        ])
+
+        return response if isinstance(response, str) else response.get('content', '') 
+
+    async def _find_experience_section(self) -> List[Dict]:
+        """Find the most relevant experience section from personal info."""
+        section_prompt = """Among these sections from a resume, identify which contains technical/professional work experience.
+Return ONLY the exact key name that best matches job experience (e.g., 'technical_experience', 'experience', 'work_experience').
+If multiple relevant sections exist, return the most specific one.
+
+Available sections:
+{sections}
+
+Example matches:
+- "experience"
+- "technical_experience"
+- "work_experience"
+- "professional_experience"
+"""
+
+        sections = self.personal_info.get('section_content', {})
+        
+        # Debug log available sections
+        print(f"Available sections: {list(sections.keys())}")
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "Identify the most relevant experience section key. Return only the key name."
+            },
+            {"role": "user", "content": section_prompt.format(sections=json.dumps(list(sections.keys()), indent=2))}
+        ])
+
+        section_key = response if isinstance(response, str) else response.get('content', '')
+        section_key = section_key.strip().lower()
+        
+        # Debug log selected section
+        print(f"Selected experience section key: {section_key}")
+        
+        return sections.get(section_key, [])
+
+    async def _generate_skills_html(self) -> str:
+        """Generate HTML specifically for skills section."""
+        skills_data = self.personal_info.get('section_content', {}).get('skills', [])
+        
+        if not skills_data:
+            print("No skills data found!")
+            return ""
+
+        skills_prompt = f"""Create ONLY the skills section HTML with these requirements:
+
+Skills Data:
+{json.dumps(skills_data, indent=2)}
+
+Technical Requirements:
+1. Structure:
+   - Section with id="skills"
+   - h2 header "Skills"
+   - Container div with class="skills-grid"
+   - For each skill category (technical, soft, tools, etc):
+     * ONLY create sections for categories that have content
+     * SKIP any empty categories or categories with no skills
+     * For non-empty categories:
+       - div with class="skill-category"
+       - h3 with category name
+       - div with class="skill-items"
+       - Each skill in a span with class="skill-tag"
+
+2. Format Example:
+   <section id="skills">
+     <h2>Skills</h2>
+     <div class="skills-grid">
+       <!-- Only include if technical skills exist -->
+       <div class="skill-category">
+         <h3>Technical Skills</h3>
+         <div class="skill-items">
+           <span class="skill-tag">Python</span>
+           <span class="skill-tag">JavaScript</span>
+         </div>
+       </div>
+     </div>
+   </section>
+
+3. Critical Requirements:
+   - DO NOT generate HTML for empty categories
+   - DO NOT include categories with no skills
+   - Only create sections for categories that have actual content
+   - Maintain clean, semantic HTML structure
+
+Return ONLY the skills section HTML."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": """You are an HTML expert. Return only the skills section HTML.
+CRITICAL: Skip any empty categories. Only generate HTML for categories that have actual skills listed."""
+            },
+            {"role": "user", "content": skills_prompt}
+        ])
+
+        html_content = response if isinstance(response, str) else response.get('content', '')
+        self.section_html['skills'] = html_content
+        return html_content
+
+    async def _generate_skills_css(self) -> str:
+        """Generate CSS specifically for skills section."""
+        # Get the stored HTML
+        skills_html = self.section_html.get('skills', '')
+        if not skills_html:
+            print("No skills HTML found!")
+            return ""
+
+        skills_css_prompt = f"""Given this EXACT skills section HTML structure:
+
+{skills_html}
+
+Create CSS that achieves these style requirements:
+1. Grid Layout:
+   - Match the HTML structure exactly
+   - Style the grid container to display skills horizontally
+   - Ensure proper spacing between all elements
+   - Make grid responsive to screen size
+
+2. Skill Categories:
+   - Style each category container found in the HTML
+   - Add visual separation between categories
+   - Maintain consistent spacing
+   - Use subtle backgrounds or borders
+
+3. Skill Tags:
+   - Style individual skill tags to appear side-by-side
+   - Add visual distinction to each tag
+   - Include subtle hover effects
+   - Ensure proper spacing between tags
+
+4. Typography:
+   - Style each heading and text element found in the HTML
+   - Maintain proper visual hierarchy
+   - Ensure readability
+
+5. Critical Requirements:
+   - CSS must match HTML classes exactly
+   - Skills must be clearly readable
+   - Layout must be responsive
+   - Maintain consistent styling across all categories
+
+Return ONLY the CSS code needed for this exact HTML structure."""
+
+        response = await self.llm.ainvoke([
+            {
+                "role": "system",
+                "content": "You are a CSS expert. Return only the CSS code that matches the provided HTML structure exactly."
+            },
+            {"role": "user", "content": skills_css_prompt}
+        ])
+
+        return response if isinstance(response, str) else response.get('content', '')
