@@ -1412,6 +1412,7 @@ JavaScript: {self.js}
 Focus on:
 1. Color contrast (white-on-white, low contrast, text readability)
 2. Particles.js implementation (positioning, z-index, initialization without JSON file)
+3. The content of the page is visible and not hidden by the particles background
 
 Return analysis as JSON matching the structure specified in the system message."""}
             ])
