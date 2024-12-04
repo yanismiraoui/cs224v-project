@@ -84,8 +84,6 @@ class ResumeProcessor:
             response = await self.agent.process("Create a professional website", 
                                               resume_content=resume_text)
             logger.info(f"Website Generation: {response}")
-            import sys
-            sys.exit()
 
             # Publish to GitHub
             response = await self.agent.process("Publish to GitHub")

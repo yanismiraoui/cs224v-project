@@ -1,13 +1,13 @@
-# Job Application Assistant with LLM
+# RecruiTree: Automating Websites, Profiles, and Career Materials
 
-An intelligent AI assistant that helps optimize job applications and professional profiles using LangChain and Together AI. This project aims to streamline the job application process by providing automated tools for website creation, profile optimization, and professional content generation.
+An intelligent AI assistant that helps creating websites, profiles, and career materials using LangChain and Together AI. This project aims to streamline the job application process by providing automated tools for website creation, profile optimization, and professional content generation. Make your job application stand out with RecruiTree! 🌲
 
 ## Overview
 
 This project implements a conversational LLM agent that assists users with:
 - Creating personalized professional websites
 - Enhancing GitHub presence
-- Generating tailored job application materials
+- Generating tailored job application materials (GitHub README, LinkedIn profile, etc.)
 
 ## Features
 
@@ -19,6 +19,7 @@ This project implements a conversational LLM agent that assists users with:
 📊 **GitHub Profile Enhancement**
 - README creation and improvements
 - Visibility recommendations
+- Suggestions to improve GitHub profile
 
 💬 **Interactive Chat Interface**
 - User-friendly Streamlit UI
