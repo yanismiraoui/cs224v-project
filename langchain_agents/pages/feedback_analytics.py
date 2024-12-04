@@ -72,24 +72,9 @@ def main():
     )
     st.plotly_chart(fig)
     
-    # Feedback over time
-    st.subheader("📅 Feedback Timeline")
     df['date'] = pd.to_datetime(df['timestamp']).dt.date
     daily_feedback = df.groupby('date').size().reset_index()
     daily_feedback.columns = ['Date', 'Count']
-    
-    fig_timeline = px.bar(
-        daily_feedback,
-        x='Date',
-        y='Count',
-        title='Daily Feedback Count'
-    )
-    # Update x-axis to show only dates
-    fig_timeline.update_xaxes(
-        tickformat="%Y-%m-%d",
-        dtick="D1"  # Show tick for each day
-    )
-    st.plotly_chart(fig_timeline)
     
     # Recent feedback table
     st.subheader("📝 Recent Feedback")
