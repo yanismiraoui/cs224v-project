@@ -88,8 +88,6 @@ def main():
         with st.expander(f"Feedback from {row['timestamp']} - Rating: {row['rating']}"):
             st.write("**User Question:**")
             st.write(row['user_input'])
-            st.write("**Agent Response:**")
-            st.write(row['agent_response'])
             st.write("**Feedback:**")
             st.write(row['feedback_text'])
 
