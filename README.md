@@ -1,6 +1,8 @@
 # RecruiTree: Automating Websites, Profiles, and Career Materials
 
-An intelligent AI assistant that helps creating websites, profiles, and career materials using LangChain and Together AI. This project aims to streamline the job application process by providing automated tools for website creation, profile optimization, and professional content generation. Make your job application stand out with RecruiTree! 🌲
+> **V2 rebuild in progress:** This repository is being rebuilt from the original Streamlit + LangChain prototype into a cleaner, evidence-first career asset system. The current V1 prototype remains available as a baseline reference; see [`docs/product/current-state.md`](docs/product/current-state.md) and [`docs/plans/2026-05-21-recruitree-rebuild.md`](docs/plans/2026-05-21-recruitree-rebuild.md).
+
+An intelligent AI assistant that helps create websites, profiles, and career materials using LangChain and Together AI. This project aims to streamline the job application process by providing automated tools for website creation, profile optimization, and professional content generation. Make your job application stand out with RecruiTree! 🌲
 
 ## Overview
 
@@ -39,7 +41,13 @@ git clone https://github.com/yanismiraoui/cs224v-project.git
 pip install -r requirements.txt
 ```
 
-3. Set your Together API key in a `secrets.toml` file.
+3. Set V1 credentials in a root-level `secrets.toml` file. The legacy app expects at least:
+```toml
+TOGETHER_API_KEY = "..."
+POSTGRES_DB = "..."
+```
+
+For more baseline details, see [`docs/product/current-state.md`](docs/product/current-state.md).
 
 4. Run the Streamlit app:
 ```bash
