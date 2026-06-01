@@ -1,6 +1,9 @@
 from typing import Dict, Any, Optional, List
 import json
-from custom_together_llm import TogetherLLM
+try:
+    from ..custom_together_llm import TogetherLLM
+except ImportError:  # Allows running from langchain_agents/ directly
+    from custom_together_llm import TogetherLLM
 from .base_page_generator import BasePageGenerator
 from .home_screen_generator import HomeScreenGenerator
 from .education_page_generator import EducationPageGenerator

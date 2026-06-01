@@ -1,15 +1,20 @@
 from langchain.tools import tool
 from typing import Optional, Dict, Any
-from custom_together_llm import TogetherLLM
 from github import Github
 from pydantic import BaseModel, Field
 import requests
 import json
 from bs4 import BeautifulSoup
 import random
-from agents.home_screen_generator import HomeScreenGenerator
 import os
-from agents.page_router import get_router, PageRouter
+try:
+    from .custom_together_llm import TogetherLLM
+    from .agents.home_screen_generator import HomeScreenGenerator
+    from .agents.page_router import get_router, PageRouter
+except ImportError:  # Allows running from langchain_agents/ directly
+    from custom_together_llm import TogetherLLM
+    from agents.home_screen_generator import HomeScreenGenerator
+    from agents.page_router import get_router, PageRouter
 
 def parse_resume(resume_content: str, llm: Optional[object] = None) -> str:
     """
@@ -46,6 +51,7 @@ def parse_resume(resume_content: str, llm: Optional[object] = None) -> str:
     }
     """
     
+    llm = llm or TogetherLLM(temperature=0.1, response_format={"type": "json_object"})
     return llm.invoke([
         {"role": "system", "content": parse_prompt},
         {"role": "user", "content": f"Parse this resume:\n\n{resume_content}"}
@@ -55,6 +61,7 @@ def get_github_profile(url: str, llm: Optional[object] = None) -> str:
     """
     Get GitHub profile content and parse it into a structured JSON format.
     """
+    llm = llm or TogetherLLM(temperature=0.1, response_format={"type": "json_object"})
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
     content = soup.find('article', class_='markdown-body entry-content container-lg f5')
@@ -136,7 +143,10 @@ def generate_website_content(query: Optional[str] = None, resume_content: Option
     # Parse resume if provided
     parsed_resume = None
     if isinstance(resume_content, str):
-        parsed_resume = parse_resume(resume_content, llm)
+        parsed_resume = parse_resume(
+            resume_content,
+            TogetherLLM(temperature=0.1, response_format={"type": "json_object"}),
+        )
         if json.loads(parsed_resume).get("ERROR") == "NOT ENOUGH INFORMATION":
             return "Not enough information to generate website content. Please provide the following information: " + json.loads(parsed_resume)["information_needed"]
 
@@ -332,12 +342,18 @@ def optimize_github_profile(url: str, resume_content: Optional[str] = None, llm:
     """
     llm = llm or TogetherLLM(temperature=0.1)
 
-    content = get_github_profile(url, llm)
+    content = get_github_profile(
+        url,
+        TogetherLLM(temperature=0.1, response_format={"type": "json_object"}),
+    )
     print(f"GitHub profile content: {content}")
         
     parsed_resume = None
     if isinstance(resume_content, str):
-        parsed_resume = parse_resume(resume_content, llm)
+        parsed_resume = parse_resume(
+            resume_content,
+            TogetherLLM(temperature=0.1, response_format={"type": "json_object"}),
+        )
         if json.loads(parsed_resume).get("ERROR") == "NOT ENOUGH INFORMATION":
             return "Not enough information to optimize profile. Please provide the following information: " + json.loads(parsed_resume)["information_needed"]
 

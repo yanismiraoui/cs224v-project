@@ -39,9 +39,25 @@ git clone https://github.com/yanismiraoui/cs224v-project.git
 pip install -r requirements.txt
 ```
 
-3. Set your Together API key in a `secrets.toml` file.
+3. Configure credentials. Prefer environment variables for deployment/CI:
+```bash
+export TOGETHER_API_KEY="your-together-api-key"
+# Optional: enables feedback collection in the Streamlit app
+export POSTGRES_DB="postgresql://user:password@host:5432/database"
+```
 
-4. Run the Streamlit app:
+For local development, you can alternatively create a root-level `secrets.toml`:
+```toml
+TOGETHER_API_KEY = "your-together-api-key"
+POSTGRES_DB = "postgresql://user:password@host:5432/database" # optional
+```
+
+4. Run the tests:
+```bash
+python -m pytest -q
+```
+
+5. Run the Streamlit app:
 ```bash
 streamlit run langchain_agents/streamlit_app.py
 ```
