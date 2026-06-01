@@ -1,16 +1,27 @@
 from langchain.agents import AgentExecutor, create_structured_chat_agent
 from langchain.memory import ConversationBufferMemory
-from tools import (
-    route_website_request,
-    optimize_github_profile,
-    publish_to_github_pages,
-    get_current_github_readme,
-    generate_github_readme,
-    publish_to_github_readme
-)
 from langchain_core.prompts import ChatPromptTemplate
 from typing import Optional, Dict, Any, List, Union
-from custom_together_llm import TogetherLLM
+try:
+    from .tools import (
+        route_website_request,
+        optimize_github_profile,
+        publish_to_github_pages,
+        get_current_github_readme,
+        generate_github_readme,
+        publish_to_github_readme,
+    )
+    from .custom_together_llm import TogetherLLM
+except ImportError:  # Allows running from langchain_agents/ directly
+    from tools import (
+        route_website_request,
+        optimize_github_profile,
+        publish_to_github_pages,
+        get_current_github_readme,
+        generate_github_readme,
+        publish_to_github_readme,
+    )
+    from custom_together_llm import TogetherLLM
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -128,7 +139,10 @@ class JobApplicationAgent:
     def __init__(self):
         """Initialize the job application agent with LangChain components."""
         setup_logging()  # Initialize logging
-        self.llm = TogetherLLM(temperature=0.1)
+        self.llm = TogetherLLM(
+            temperature=0.1,
+            response_format={"type": "json_object"},
+        )
         
         # Add action history attribute
         self.action_history: List[Dict[str, Any]] = []

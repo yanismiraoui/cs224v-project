@@ -1,7 +1,9 @@
 import streamlit as st
 import asyncio
-from agent import JobApplicationAgent
-import toml
+try:
+    from .agent import JobApplicationAgent
+except ImportError:  # Allows `streamlit run langchain_agents/streamlit_app.py`
+    from agent import JobApplicationAgent
 import os
 from typing import BinaryIO
 import pymupdf
@@ -15,13 +17,14 @@ from PIL import Image
 from streamlit.components.v1 import html
 import glob
 import shutil
+try:
+    from .config import get_secret
+except ImportError:  # Allows `streamlit run langchain_agents/streamlit_app.py`
+    from config import get_secret
 
 # Initialize environment variables and configurations
 try:
-    # save in secrets.toml in the root directory (not .streamlit)
-    secrets_path = Path(__file__).parent.parent / "secrets.toml"
-    secrets = toml.load(str(secrets_path))
-    os.environ['TOGETHER_API_KEY'] = secrets['TOGETHER_API_KEY']
+    os.environ['TOGETHER_API_KEY'] = get_secret('TOGETHER_API_KEY') or ""
 except Exception as e:
     st.error(f"Error loading secrets: {str(e)}")
     st.stop()
@@ -65,11 +68,11 @@ How can I help you?"""
         if 'profile_pic_base64' not in st.session_state:
             st.session_state.profile_pic_base64 = None
         
-        # Use the connection string directly instead of separate parameters
-        self.db_url = secrets['POSTGRES_DB']
+        self.db_url = get_secret('POSTGRES_DB', required=False)
         
-        # Initialize database table if it doesn't exist
-        self.initialize_database()
+        # Initialize database table if configured; feedback remains optional locally.
+        if self.db_url:
+            self.initialize_database()
         
         # Add a new session state variable to track submitted feedback
         if 'submitted_feedbacks' not in st.session_state:
@@ -104,6 +107,8 @@ How can I help you?"""
             
     def initialize_database(self):
         """Initialize the PostgreSQL database and create table if it doesn't exist."""
+        if not self.db_url:
+            return
         try:
             with psycopg2.connect(self.db_url) as conn:
                 with conn.cursor() as cur:
@@ -125,6 +130,9 @@ How can I help you?"""
 
     def save_feedback(self, feedback_data: dict):
         """Save feedback to PostgreSQL database."""
+        if not self.db_url:
+            st.info("Feedback database is not configured for this environment.")
+            return
         try:
             with psycopg2.connect(self.db_url) as conn:
                 with conn.cursor() as cur:

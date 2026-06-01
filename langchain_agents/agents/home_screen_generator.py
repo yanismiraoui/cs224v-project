@@ -1,4 +1,7 @@
-from custom_together_llm import TogetherLLM
+try:
+    from ..custom_together_llm import TogetherLLM
+except ImportError:  # Allows running from langchain_agents/ directly
+    from custom_together_llm import TogetherLLM
 from typing import Optional, Dict, Union, Any, List
 from langchain_core.prompts import ChatPromptTemplate
 import json

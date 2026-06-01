@@ -5,7 +5,10 @@ import logging
 from typing import Optional
 import toml
 import PyPDF2
-from agent import JobApplicationAgent
+try:
+    from .agent import JobApplicationAgent
+except ImportError:  # Allows running from langchain_agents/ directly
+    from agent import JobApplicationAgent
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
@@ -54,7 +57,7 @@ class ResumeProcessor:
 
             # Give the GitHub token
             response = await self.agent.process(f"This is my token {os.getenv('GITHUB_TOKEN')}")
-            logger.info(f"GitHub Token: {response}")
+            logger.info("GitHub token was provided to the agent")
 
             # Generate new README
             response = await self.agent.process("Generate a new GitHub README", 
@@ -93,7 +96,7 @@ class ResumeProcessor:
 
             # Give the GitHub token
             response = await self.agent.process(f"This is my token {os.getenv('GITHUB_TOKEN')}")
-            logger.info(f"GitHub Token: {response}")
+            logger.info("GitHub token was provided to the agent")
 
         except Exception as e:
             logger.error(f"Website operations failed: {str(e)}")
